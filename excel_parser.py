@@ -1,25 +1,30 @@
 """
-Flexible Excel parsing for the Name Board Generator.
+Excel parsing for the Name Board Generator — simplified.
 
-Goal: regardless of how the uploaded Excel is structured, reliably recover
-(name, title, company) for each row. Three layers, in order of preference:
+Rule of thumb: find the person's NAME, find the rest of their descriptive
+text (title / designation / organization — whatever it's called), and
+ignore everything else on the sheet (section dividers, blank rows, serial
+number columns, etc).
 
-1. Header synonym matching — recognize common header names for each role
-   (Name / Title / Company), case-insensitively, even if the workbook
-   doesn't use the exact words "Name"/"Title"/"Company".
-2. Combined-column splitting — if there's a Name column plus exactly ONE
-   other text column (no separate Title and Company), treat that single
-   column as a combined "Title + Company" field and split it into the two
-   parts (split on the last comma, since that's how this app joins them
-   when generating boards in the first place).
-3. No-header fallback — if the first row doesn't look like a header row
-   at all (i.e. none of the cells match known header words), assume the
-   file has no header row and treat columns positionally: 1st = Name,
-   2nd = Title, 3rd = Company (if present).
+Specifically:
+  - One column is identified as the Name column (by header word if a
+    header row exists, otherwise the first column).
+  - ALL other populated columns for that row are concatenated together
+    (in sheet order) to form a single "details" block. This becomes the
+    Title+Company text the board generator lays out — it decides on its
+    own whether that fits on one line or needs to split into two visually,
+    no comma-splitting or guessing about which part is "title" vs
+    "company" is attempted here.
+  - If a row's Name cell looks like a section header (e.g. "DIGNITARIES",
+    "SPEAKERS", "QUIZ") and there's no other descriptive text in that row,
+    it's skipped rather than turned into a blank name board.
+  - Fully blank rows are skipped.
 
 Returns a list of dicts: [{"name": ..., "title": ..., "company": ...}, ...]
-plus a human-readable note describing which interpretation was used, so the
-app can show the user what happened.
+("title" is always left empty; the full details text goes into "company",
+since the board generator displays Title and Company as one combined
+visual block whenever only one of them is present.) Plus a human-readable
+note describing what was found, for display in the app.
 """
 
 from __future__ import annotations
@@ -29,84 +34,94 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# Header synonym tables
-# ---------------------------------------------------------------------------
-
 NAME_SYNONYMS = {
     "name", "names", "fullname", "full name", "dignitary", "dignitary name",
     "speaker", "speaker name", "guest", "guest name", "person", "attendee",
 }
 
+# If exactly two detail columns remain (besides Name) and one of them has a
+# header matching this list, we trust that the sheet genuinely separates
+# Title from Company/Organization, and keep them as two distinct fields
+# (rendered as two stacked lines) instead of merging into one block.
 TITLE_SYNONYMS = {
     "title", "designation", "position", "role", "post",
-    "designation/title", "title/designation",
 }
 
-COMPANY_SYNONYMS = {
-    "company", "organisation", "organization", "org", "department",
-    "affiliation", "institute", "institution", "ministry", "office",
+# Columns that are clearly NOT part of the person's details and should be
+# ignored entirely (not folded into the details text), e.g. serial numbers
+# or contact info that isn't shown on a name board.
+IGNORE_SYNONYMS = {
+    "sr", "sr no", "sr no.", "s no", "s no.", "sl no", "sl no.", "no",
+    "no.", "#", "serial number", "index", "id",
+    "email", "e-mail", "email id", "e-mail id", "email address",
+    "phone", "phone no", "phone number", "mobile", "mobile no",
+    "mobile number", "contact", "contact no", "contact number",
 }
 
-# Columns that plausibly hold "title + company combined in one field"
-COMBINED_SYNONYMS = {
-    "organisation", "organization", "designation", "title", "details",
-    "title/organisation", "title/organization", "designation/organisation",
-    "designation/organization", "position", "role",
-} | TITLE_SYNONYMS | COMPANY_SYNONYMS
+
+def _normalize(value) -> str:
+    return re.sub(r"\s+", " ", str(value).strip().lower())
 
 
-def _normalize(col: str) -> str:
-    return re.sub(r"\s+", " ", str(col).strip().lower())
+def _clean_text(value) -> str:
+    """Stringify a cell, collapse embedded newlines/extra whitespace, strip."""
+    text = str(value).strip()
+    if text.lower() == "nan":
+        return ""
+    text = re.sub(r"\s*\n\s*", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+_SECTION_HEADER_WORDS = {
+    "dignitaries", "dignitary", "speakers", "speaker", "guests", "guest",
+    "quiz", "workshop conductors", "workshop", "panelists", "panelist",
+    "chief guests", "chief guest", "moderators", "moderator", "judges",
+    "judge", "participants", "delegates", "vips", "vip", "session",
+    "organizers", "organisers", "committee", "members",
+}
+
+
+def _looks_like_section_header(name: str) -> bool:
+    """A section divider like 'DIGNITARIES' or 'SPEAKERS' sitting in the
+    Name column, with no details in the same row. Deliberately conservative
+    so a real person's name (e.g. short initials like 'CP' or 'GV', or a
+    name typed in all caps) is never mistaken for one:
+    - exact/near match against a known list of section-label words, OR
+    - long (3+ words) all-caps text with no digits/periods, which is a much
+      stronger signal of a label than a short name/initials ever would be.
+    """
+    n = name.strip()
+    if not n:
+        return False
+    norm = re.sub(r"\s+", " ", n.lower()).strip(" :-")
+    if norm in _SECTION_HEADER_WORDS:
+        return True
+    has_lower = any(c.islower() for c in n)
+    has_digit_or_period = any(c.isdigit() or c == "." for c in n)
+    word_count = len(n.split())
+    return (not has_lower) and (not has_digit_or_period) and word_count >= 3
 
 
 @dataclass
 class ParseResult:
     rows: list[dict]
-    note: str  # human-readable explanation of what interpretation was used
+    note: str  # human-readable explanation of what was found
 
 
-def _looks_like_header(value) -> bool:
-    """Heuristic: does this cell look like a column header word rather
-    than actual data (a person's name, title, etc.)?"""
-    norm = _normalize(value)
-    if not norm:
-        return False
-    all_known = NAME_SYNONYMS | TITLE_SYNONYMS | COMPANY_SYNONYMS | COMBINED_SYNONYMS
-    return norm in all_known
+def parse_dignitaries(file) -> ParseResult:
+    """Parse an uploaded Excel file: find Name + everything else (as a
+    single combined details block), ignore the rest of the sheet."""
 
-
-def _split_combined(text: str) -> tuple[str, str]:
-    """Split a combined 'Title, Company' style string into (title, company).
-    Mirrors the app's own merge rule (title + ", " + company), so splitting
-    on the LAST comma is the correct inverse for the common case of a
-    single embedded comma. If there are multiple commas, we still split on
-    the last one, which best matches 'long descriptive title, Org Name'."""
-    text = (text or "").strip()
-    if not text:
-        return "", ""
-    if "," in text:
-        title_part, company_part = text.rsplit(",", 1)
-        return title_part.strip(), company_part.strip()
-    # No comma at all — can't split further; treat whole thing as title.
-    return text, ""
-
-
-def parse_dignitaries(raw_bytes_or_buffer) -> ParseResult:
-    """Parse an uploaded Excel file into a list of {"name","title","company"}
-    dicts, using header synonyms, combined-column splitting, or positional
-    fallback as needed."""
-
-    # First, peek at the raw sheet with no header assumption, to test
-    # whether row 0 actually looks like a header row.
-    raw = pd.read_excel(raw_bytes_or_buffer, header=None)
+    raw = pd.read_excel(file, header=None)
     raw = raw.dropna(how="all")
     if raw.empty:
         return ParseResult([], "The uploaded file appears to be empty.")
 
-    first_row_values = [str(v) for v in raw.iloc[0].tolist()]
-    header_like_count = sum(1 for v in first_row_values if _looks_like_header(v))
-    has_header = header_like_count >= 1  # at least one recognizable header word
+    # Decide whether row 0 is a header row: does any cell match a known
+    # header word (name synonym or ignore synonym)?
+    first_row_norms = [_normalize(v) for v in raw.iloc[0].tolist()]
+    has_header = any(n in NAME_SYNONYMS or n in IGNORE_SYNONYMS for n in first_row_norms)
 
     if has_header:
         df = raw.copy()
@@ -118,112 +133,91 @@ def parse_dignitaries(raw_bytes_or_buffer) -> ParseResult:
 
     df = df.fillna("")
 
-    # --- Map columns to roles -------------------------------------------------
+    # --- Find the Name column -------------------------------------------
     name_col = None
+    if has_header:
+        for col in df.columns:
+            if _normalize(col) in NAME_SYNONYMS:
+                name_col = col
+                break
+    if name_col is None:
+        name_col = df.columns[0]  # universal convention: name is first
+
+    # --- Identify columns to ignore entirely (serial numbers etc.) ------
+    ignore_cols = set()
+    if has_header:
+        for col in df.columns:
+            if col != name_col and _normalize(col) in IGNORE_SYNONYMS:
+                ignore_cols.add(col)
+
+    detail_cols = [c for c in df.columns if c != name_col and c not in ignore_cols]
+
+    # --- Decide whether to keep Title/Company as two distinct fields ----
+    # Only when there are EXACTLY two detail columns left AND at least one
+    # of them has a header that clearly means "Title" (Designation,
+    # Position, etc.) do we trust the sheet's own structure enough to keep
+    # Title and Company separate (rendered as two stacked lines). Any other
+    # shape (one column, or 2+ columns with no clear Title header) falls
+    # back to combining everything into a single details block, since
+    # guessing which part is "title" vs "company" otherwise is unreliable.
     title_col = None
     company_col = None
-
-    if has_header:
-        norm_cols = {col: _normalize(col) for col in df.columns}
-        for col, norm in norm_cols.items():
-            if name_col is None and norm in NAME_SYNONYMS:
-                name_col = col
-        for col, norm in norm_cols.items():
-            if title_col is None and norm in TITLE_SYNONYMS and col != name_col:
-                title_col = col
-        for col, norm in norm_cols.items():
-            if company_col is None and norm in COMPANY_SYNONYMS and col not in (name_col, title_col):
-                company_col = col
-
-        # If we couldn't even find a name column by synonym, fall back to
-        # "first column is name" — nearly universal convention.
-        if name_col is None:
-            name_col = df.columns[0]
-
-    else:
-        # No header row detected at all: go purely positional.
-        cols = list(df.columns)
-        name_col = cols[0] if len(cols) > 0 else None
-        title_col = cols[1] if len(cols) > 1 else None
-        company_col = cols[2] if len(cols) > 2 else None
+    if has_header and len(detail_cols) == 2:
+        for c in detail_cols:
+            if _normalize(c) in TITLE_SYNONYMS:
+                title_col = c
+        if title_col is not None:
+            company_col = next(c for c in detail_cols if c != title_col)
 
     # --- Build rows -------------------------------------------------------
-    other_text_cols = [
-        c for c in df.columns
-        if c not in (name_col, title_col, company_col)
-        and df[c].astype(str).str.strip().ne("").any()
-    ]
-
     rows = []
-    note_parts = []
+    skipped_section_headers = []
+    skipped_blank = 0
 
-    if name_col is None:
-        return ParseResult([], "Could not find a column that looks like a Name column.")
+    for _, r in df.iterrows():
+        name = _clean_text(r[name_col])
+        if not name:
+            skipped_blank += 1
+            continue
 
-    if title_col is not None and company_col is not None:
-        # Clean case: separate Title and Company columns both found.
-        for _, r in df.iterrows():
-            rows.append({
-                "name": str(r[name_col]).strip(),
-                "title": str(r[title_col]).strip(),
-                "company": str(r[company_col]).strip(),
-            })
-        note_parts.append(
-            f"Used '{name_col}' as Name, '{title_col}' as Title, '{company_col}' as Company."
-        )
-
-    elif title_col is not None and company_col is None:
-        # One title-ish column found, no separate company column.
-        # If there's exactly one other populated text column, treat THAT
-        # as company instead of splitting (more reliable than guessing a
-        # comma split when real structure is available).
-        candidate_company_cols = [c for c in other_text_cols]
-        if len(candidate_company_cols) == 1:
-            company_col = candidate_company_cols[0]
-            for _, r in df.iterrows():
-                rows.append({
-                    "name": str(r[name_col]).strip(),
-                    "title": str(r[title_col]).strip(),
-                    "company": str(r[company_col]).strip(),
-                })
-            note_parts.append(
-                f"Used '{name_col}' as Name, '{title_col}' as Title, "
-                f"and '{company_col}' (unlabeled/extra column) as Company."
-            )
+        if title_col is not None:
+            title = _clean_text(r[title_col])
+            company = _clean_text(r[company_col])
+            details_for_skip_check = (title + company)
         else:
-            # Truly only Name + one combined column: split on last comma.
-            for _, r in df.iterrows():
-                combined = str(r[title_col]).strip()
-                t, c = _split_combined(combined)
-                rows.append({"name": str(r[name_col]).strip(), "title": t, "company": c})
-            note_parts.append(
-                f"'{title_col}' contained combined title + company text; "
-                f"split automatically on the last comma into Title and Company."
-            )
+            detail_parts = [_clean_text(r[c]) for c in detail_cols]
+            detail_parts = [p for p in detail_parts if p]
+            # Join multiple distinct columns with ", " so structure survives
+            # as a comma-separated line, rather than mashed with no
+            # punctuation at all.
+            title = ""
+            company = ", ".join(detail_parts).strip()
+            details_for_skip_check = company
 
+        if not details_for_skip_check and _looks_like_section_header(name):
+            skipped_section_headers.append(name)
+            continue
+
+        rows.append({"name": name, "title": title, "company": company})
+
+    if title_col is not None:
+        note_parts = [f"Used '{name_col}' as Name, '{title_col}' as Title, '{company_col}' as Company."]
     else:
-        # No title-ish column found by name at all. If there's at least one
-        # other populated column, treat it as combined title+company.
-        if other_text_cols:
-            combined_col = other_text_cols[0]
-            for _, r in df.iterrows():
-                combined = str(r[combined_col]).strip()
-                t, c = _split_combined(combined)
-                rows.append({"name": str(r[name_col]).strip(), "title": t, "company": c})
-            note_parts.append(
-                f"Used '{name_col}' as Name; '{combined_col}' contained combined "
-                f"title + company text and was split automatically on the last comma."
-            )
-        else:
-            # Only a name column exists, nothing else.
-            for _, r in df.iterrows():
-                rows.append({"name": str(r[name_col]).strip(), "title": "", "company": ""})
-            note_parts.append(f"Only a Name column ('{name_col}') was found; Title/Company left blank.")
-
+        note_parts = [
+            f"Used '{name_col}' as Name; "
+            + (f"combined {', '.join(repr(c) for c in detail_cols)} as Title/Company."
+               if detail_cols else "no other column with details was found.")
+        ]
     if not has_header:
-        note_parts.append("No header row was detected, so columns were matched by position (1st=Name, 2nd=Title, 3rd=Company).")
-
-    # Drop rows with no name
-    rows = [r for r in rows if r["name"].strip() != ""]
+        note_parts.append("No header row was detected; the first column was used as Name.")
+    if skipped_section_headers:
+        preview = ", ".join(repr(s) for s in skipped_section_headers[:3])
+        more = "…" if len(skipped_section_headers) > 3 else ""
+        note_parts.append(
+            f"Skipped {len(skipped_section_headers)} likely section-header row(s) "
+            f"with no details (e.g. {preview}{more})."
+        )
+    if skipped_blank:
+        note_parts.append(f"Skipped {skipped_blank} blank row(s).")
 
     return ParseResult(rows, " ".join(note_parts))
