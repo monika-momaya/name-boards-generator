@@ -5,9 +5,9 @@ Generates A4-landscape PPTX where each slide contains a fold-over tent card:
   - Top half: NAME + TITLE/COMPANY, rotated 180°
   - Bottom half: NAME + TITLE/COMPANY, upright
 
-Fonts:
-  - Name:           Alternate Gothic ATF Demi   (ALL CAPS, auto-shrink to fit one line)
-  - Title/Company:  Alternate Gothic ATF Medium (Title Case, allowed to wrap to 2 lines)
+Font: Alternate Gothic No.2 BT (used for both Name and Title/Company —
+  Name is ALL CAPS and auto-shrinks to fit one line; Title/Company is
+  Title Case, smaller, and allowed to wrap to 2 lines).
 
 Layout rule: if Title and Company each fit on their own line (within the
 max line count budget), they are stacked tightly (own lines). If either
@@ -38,12 +38,11 @@ import os
 SLIDE_W_IN = 11.69
 SLIDE_H_IN = 8.27
 
-# These are the actual intended fonts. PowerPoint will use them correctly
-# on any machine that has them installed; otherwise it substitutes a
-# default font. Upload a matching .ttf/.otf in the app sidebar to also get
-# accurate auto-shrink/wrap measurements during generation.
-FONT_NAME_BOLD = "Alternate Gothic ATF Demi"
-FONT_NAME_MEDIUM = "Alternate Gothic ATF Medium"
+# Font used for both Name and Title/Company. "Alternate Gothic No.2 BT" is
+# the correct, intended font for these name boards (single weight, used for
+# both elements — sized differently per the layout rules below).
+FONT_NAME_BOLD = "AlternateGothic2 BT"
+FONT_NAME_MEDIUM = "AlternateGothic2 BT"
 
 # Fallback fonts used ONLY for measuring text width if the real TTF files
 # are not available to PIL/Pillow in this environment. PowerPoint itself
@@ -79,13 +78,14 @@ if os.path.isfile(_DEFAULT_FONT_PATH):
     _CUSTOM_FONT_PATHS["medium"] = _DEFAULT_FONT_PATH
 
 
-def register_fonts(demi_path: Optional[str], medium_path: Optional[str]) -> None:
-    """Register actual TTF/OTF font files for accurate width measurement."""
+def register_fonts(font_path: Optional[str] = None) -> None:
+    """Register the actual TTF/OTF font file for accurate width measurement.
+    Used for both Name and Title/Company, since this app uses a single font
+    throughout (sized differently per role)."""
     global _CUSTOM_FONT_PATHS
-    if demi_path and os.path.isfile(demi_path):
-        _CUSTOM_FONT_PATHS["demi"] = demi_path
-    if medium_path and os.path.isfile(medium_path):
-        _CUSTOM_FONT_PATHS["medium"] = medium_path
+    if font_path and os.path.isfile(font_path):
+        _CUSTOM_FONT_PATHS["demi"] = font_path
+        _CUSTOM_FONT_PATHS["medium"] = font_path
 
 
 def _get_measure_font(weight: str, size_pt: int) -> ImageFont.FreeTypeFont:
