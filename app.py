@@ -53,8 +53,7 @@ with st.sidebar:
     template_df = pd.DataFrame(
         {
             "Name": ["Siddaramaiah", "D K Shivakumar"],
-            "Title": ["Hon'ble Chief Minister of Karnataka", "Hon'ble Deputy Chief Minister"],
-            "Company": ["", "Government of Karnataka"],
+            "Details": ["Hon'ble Chief Minister of Karnataka", "Hon'ble Deputy Chief Minister, Government of Karnataka"],
         }
     )
     buf = io.BytesIO()
@@ -65,6 +64,10 @@ with st.sidebar:
         file_name="nameboard_template.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+    st.caption(
+        "Any column name works for the details column (Title, Organization, "
+        "Designation, etc.) — only the Name column needs to be recognizable."
+    )
 
 # ---------------------------------------------------------------------------
 # Main: upload + preview + generate
@@ -72,9 +75,10 @@ with st.sidebar:
 
 st.subheader("1. Upload your Excel file")
 st.write(
-    "Any layout works — the app tries to automatically detect Name, Title, "
-    "and Company columns, even with different header names, a single "
-    "combined title+company column, or no header row at all."
+    "Any layout works — the app finds the Name column and treats every "
+    "other column as the dignitary's title/organization details (combined "
+    "as-is, never split or guessed at). Section-header rows (e.g. "
+    "'SPEAKERS', 'DIGNITARIES') and blank rows are skipped automatically."
 )
 
 uploaded = st.file_uploader("Excel file (.xlsx)", type=["xlsx"])
@@ -91,12 +95,12 @@ if uploaded is not None:
         st.stop()
 
     df = pd.DataFrame(result.rows)
+    df = df.rename(columns={"company": "details"}).drop(columns=["title"])
 
     st.success(f"Loaded {len(df)} dignitary record(s).")
     st.caption(f"ℹ️ {result.note}")
-    st.dataframe(df[["name", "title", "company"]], use_container_width=True)
-    st.caption("If this looks wrong, you can edit the table directly below before generating.")
-    df = st.data_editor(df[["name", "title", "company"]], use_container_width=True, num_rows="dynamic")
+    st.caption("If anything looks wrong, you can edit the table directly below before generating.")
+    df = st.data_editor(df[["name", "details"]], use_container_width=True, num_rows="dynamic")
 
     st.subheader("2. Generate")
     col1, col2 = st.columns(2)
@@ -109,8 +113,8 @@ if uploaded is not None:
         dignitaries = [
             Dignitary(
                 name=str(row["name"]).strip(),
-                title=str(row["title"]).strip(),
-                company=str(row["company"]).strip(),
+                title="",
+                company=str(row["details"]).strip(),
             )
             for _, row in df.iterrows()
             if str(row["name"]).strip() != ""
