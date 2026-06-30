@@ -7,18 +7,18 @@ ignore everything else on the sheet (section dividers, blank rows, serial
 number columns, etc).
 
 Specifically:
-  - One column is identified as the Name column (by header word if a
-    header row exists, otherwise the first column).
-  - ALL other populated columns for that row are concatenated together
-    (in sheet order) to form a single "details" block. This becomes the
-    Title+Company text the board generator lays out — it decides on its
-    own whether that fits on one line or needs to split into two visually,
-    no comma-splitting or guessing about which part is "title" vs
-    "company" is attempted here.
-  - If a row's Name cell looks like a section header (e.g. "DIGNITARIES",
-    "SPEAKERS", "QUIZ") and there's no other descriptive text in that row,
-    it's skipped rather than turned into a blank name board.
-  - Fully blank rows are skipped.
+- One column is identified as the Name column (by header word if a
+  header row exists, otherwise the first column).
+- ALL other populated columns for that row are concatenated together
+  (in sheet order) to form a single "details" block. This becomes the
+  Title+Company text the board generator lays out — it decides on its
+  own whether that fits on one line or needs to split into two visually,
+  no comma-splitting or guessing about which part is "title" vs
+  "company" is attempted here.
+- If a row's Name cell looks like a section header (e.g. "DIGNITARIES",
+  "SPEAKERS", "QUIZ") and there's no other descriptive text in that row,
+  it's skipped rather than turned into a blank name board.
+- Fully blank rows are skipped.
 
 Returns a list of dicts: [{"name": ..., "title": ..., "company": ...}, ...]
 ("title" is always left empty; the full details text goes into "company",
@@ -112,9 +112,9 @@ class ParseResult:
 def parse_dignitaries(file) -> ParseResult:
     """Parse an uploaded Excel file: find Name + everything else (as a
     single combined details block), ignore the rest of the sheet."""
-
     raw = pd.read_excel(file, header=None)
     raw = raw.dropna(how="all")
+
     if raw.empty:
         return ParseResult([], "The uploaded file appears to be empty.")
 
@@ -208,8 +208,10 @@ def parse_dignitaries(file) -> ParseResult:
             + (f"combined {', '.join(repr(c) for c in detail_cols)} as Title/Company."
                if detail_cols else "no other column with details was found.")
         ]
+
     if not has_header:
         note_parts.append("No header row was detected; the first column was used as Name.")
+
     if skipped_section_headers:
         preview = ", ".join(repr(s) for s in skipped_section_headers[:3])
         more = "…" if len(skipped_section_headers) > 3 else ""
@@ -217,6 +219,7 @@ def parse_dignitaries(file) -> ParseResult:
             f"Skipped {len(skipped_section_headers)} likely section-header row(s) "
             f"with no details (e.g. {preview}{more})."
         )
+
     if skipped_blank:
         note_parts.append(f"Skipped {skipped_blank} blank row(s).")
 
