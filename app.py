@@ -25,41 +25,31 @@ st.caption(
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.header("Fonts")
+    st.header("Font")
     st.write(
-        "**Name font:** Alternate Gothic ATF Demi"
-    )
-    st.write(
-        "**Title/Company font:** AlternateGothic2 BT"
+        "**Font used throughout:** AlternateGothic2 BT "
+        "(bold, 90pt for Name • regular, 50pt for Title/Company)"
     )
     st.caption(
         "⚠️ No font is bundled with this app (font files are licensed and "
-        "not stored in the repo). Upload your licensed Alternate Gothic ATF "
-        "Demi (Name) and AlternateGothic2 BT (Title/Company) files below for "
-        "accurate sizing and rendering in the in-app preview/PDF. Without an "
-        "upload, text-fitting falls back to a generic system font for its "
-        "calculations, and the generated .pptx will still reference the "
-        "correct font names — but PowerPoint will substitute a default font "
-        "wherever Alternate Gothic ATF Demi / AlternateGothic2 BT isn't "
+        "not stored in the repo). Upload your licensed AlternateGothic2 BT "
+        "file below for accurate sizing and rendering in the in-app "
+        "preview/PDF. Without an upload, text-fitting falls back to a "
+        "generic system font for its calculations, and the generated "
+        ".pptx will still reference the correct font name — but PowerPoint "
+        "will substitute a default font wherever AlternateGothic2 BT isn't "
         "installed on the machine opening the file."
     )
 
-    demi_upload = st.file_uploader("Upload Alternate Gothic ATF Demi (.ttf/.otf)", type=["ttf", "otf"], key="demi")
-    medium_upload = st.file_uploader("Upload AlternateGothic2 BT (.ttf/.otf)", type=["ttf", "otf"], key="medium")
+    font_upload = st.file_uploader("Upload AlternateGothic2 BT (.ttf/.otf)", type=["ttf", "otf"], key="font")
 
+    font_path = None
+    if font_upload is not None:
+        font_path = os.path.join(tempfile.gettempdir(), "altgothic2bt_" + font_upload.name)
+        with open(font_path, "wb") as f:
+            f.write(font_upload.getbuffer())
 
-    demi_path = None
-    medium_path = None
-    if demi_upload is not None:
-        demi_path = os.path.join(tempfile.gettempdir(), "demi_" + demi_upload.name)
-        with open(demi_path, "wb") as f:
-            f.write(demi_upload.getbuffer())
-    if medium_upload is not None:
-        medium_path = os.path.join(tempfile.gettempdir(), "medium_" + medium_upload.name)
-        with open(medium_path, "wb") as f:
-            f.write(medium_upload.getbuffer())
-
-    register_fonts(demi_path, medium_path)
+    register_fonts(font_path, font_path)
 
     st.divider()
     st.header("Excel template")

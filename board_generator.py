@@ -6,7 +6,7 @@ Generates A4-landscape PPTX where each slide contains a fold-over tent card:
   - Bottom half: NAME + TITLE/COMPANY, upright
 
 Fonts:
-  - Name:           Alternate Gothic ATF Demi   (ALL CAPS, auto-shrink to fit one line)
+  - Name:           AlternateGothic2 BT, bold  (ALL CAPS, 90pt)
   - Title/Company:  AlternateGothic2 BT (Title Case, allowed to wrap to 2 lines)
 
 Layout rule: if Title and Company each fit on their own line (within the
@@ -42,7 +42,7 @@ SLIDE_H_IN = 8.27
 # on any machine that has them installed; otherwise it substitutes a
 # default font. Upload a matching .ttf/.otf in the app sidebar to also get
 # accurate auto-shrink/wrap measurements during generation.
-FONT_NAME_BOLD = "Alternate Gothic ATF Demi"
+FONT_NAME_BOLD = "AlternateGothic2 BT"
 FONT_NAME_MEDIUM = "AlternateGothic2 BT"
 
 # Fallback fonts used ONLY for measuring text width if the real TTF files
