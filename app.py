@@ -26,22 +26,7 @@ st.caption(
 
 with st.sidebar:
     st.header("Font")
-    st.write(
-        "**Font used throughout:** AlternateGothic2 BT "
-        "(bold, 90pt for Name • regular, 50pt for Title/Company)"
-    )
-    st.caption(
-        "⚠️ No font is bundled with this app (font files are licensed and "
-        "not stored in the repo). Upload your licensed AlternateGothic2 BT "
-        "file below for accurate sizing and rendering in the in-app "
-        "preview/PDF. Without an upload, text-fitting falls back to a "
-        "generic system font for its calculations, and the generated "
-        ".pptx will still reference the correct font name — but PowerPoint "
-        "will substitute a default font wherever AlternateGothic2 BT isn't "
-        "installed on the machine opening the file."
-    )
-
-    font_upload = st.file_uploader("Upload AlternateGothic2 BT (.ttf/.otf)", type=["ttf", "otf"], key="font")
+    font_upload = st.file_uploader("Upload font (.ttf/.otf)", type=["ttf", "otf"], key="font")
 
     font_path = None
     if font_upload is not None:

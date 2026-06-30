@@ -64,8 +64,8 @@ MARGIN_X = 0.55
 # editable, so the box/text can be resized by hand in PowerPoint for that
 # one slide. Keeping MAX == MIN here effectively fixes the size while
 # reusing the existing fit/wrap helper functions unchanged.
-NAME_MAX_PT = 90
-NAME_MIN_PT = 90
+NAME_MAX_PT = 95
+NAME_MIN_PT = 95
 TITLE_MAX_PT = 50
 TITLE_MIN_PT = 50
 
@@ -335,10 +335,13 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
         for i, line in enumerate(title_lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.alignment = PP_ALIGN.CENTER
-            # tight spacing between title/company lines
+            # Line spacing between Title/Company lines: set to "Exactly 50pt"
+            # (passing a Pt() length to line_spacing sets exact-point spacing
+            # in PowerPoint, equivalent to choosing "Exactly" + 50pt in the
+            # Paragraph dialog, instead of a "Single"/multiple line spacing).
             p.space_before = Pt(0)
             p.space_after = Pt(0)
-            p.line_spacing = 1.0
+            p.line_spacing = Pt(50)
             run = p.add_run()
             _set_run(run, line, FONT_NAME_MEDIUM, title_size, bold=False, color=TITLE_COLOR, caps=False)
 
