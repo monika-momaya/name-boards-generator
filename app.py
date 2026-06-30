@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from board_generator import Dignitary, build_presentation, register_fonts
+from excel_parser import parse_dignitaries
 
 st.set_page_config(page_title="Name Board Generator", page_icon="🪧", layout="centered")
 
@@ -83,33 +84,32 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 st.subheader("1. Upload your Excel file")
-st.write("Required columns: **Name**, **Title**, **Company** (Title and Company may be left blank).")
+st.write(
+    "Just needs a column with each person's **name**. Any other columns "
+    "(title, designation, organization, etc.) are automatically picked up "
+    "and shown on the board — section divider rows, blank rows, and "
+    "serial-number/email/phone columns are detected and ignored."
+)
 
 uploaded = st.file_uploader("Excel file (.xlsx)", type=["xlsx"])
 
 if uploaded is not None:
     try:
-        df = pd.read_excel(uploaded)
+        result = parse_dignitaries(uploaded)
     except Exception as e:
         st.error(f"Could not read the Excel file: {e}")
         st.stop()
 
-    df.columns = [str(c).strip() for c in df.columns]
-    required_cols = {"Name", "Title", "Company"}
-    missing = required_cols - set(df.columns)
-    if missing:
-        st.error(f"Missing required column(s): {', '.join(sorted(missing))}")
+    rows = result.rows
+    if not rows:
+        st.warning("No usable rows (with a Name) were found in the uploaded file.")
         st.stop()
 
-    df = df.fillna("")
-    df = df[df["Name"].astype(str).str.strip() != ""]
-
-    if df.empty:
-        st.warning("No rows with a Name were found in the uploaded file.")
-        st.stop()
-
-    st.success(f"Loaded {len(df)} dignitary record(s).")
-    st.dataframe(df[["Name", "Title", "Company"]], use_container_width=True)
+    st.success(f"Loaded {len(rows)} dignitary record(s).")
+    st.caption(result.note)
+    preview_df = pd.DataFrame(rows, columns=["name", "title", "company"])
+    preview_df.columns = ["Name", "Title", "Company"]
+    st.dataframe(preview_df, use_container_width=True)
 
     st.subheader("2. Generate")
     col1, col2 = st.columns(2)
@@ -121,12 +121,13 @@ if uploaded is not None:
     if st.button("🪧 Generate Name Boards", type="primary"):
         dignitaries = [
             Dignitary(
-                name=str(row["Name"]).strip(),
-                title=str(row["Title"]).strip(),
-                company=str(row["Company"]).strip(),
+                name=row["name"],
+                title=row["title"],
+                company=row["company"],
             )
-            for _, row in df.iterrows()
+            for row in rows
         ]
+
 
         with st.spinner("Building presentation..."):
             prs = build_presentation(dignitaries)
