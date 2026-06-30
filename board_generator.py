@@ -357,8 +357,8 @@ def build_presentation(dignitaries: list[Dignitary]) -> Presentation:
 
         # Faint horizontal fold-guide line across the middle (matches sample)
         line = slide.shapes.add_connector(1, Inches(0.3), Inches(HALF_H_IN), Inches(SLIDE_W_IN - 0.3), Inches(HALF_H_IN))
-        line.line.color.rgb = RGBColor(0xCC, 0xCC, 0xCC)
-        line.line.width = Pt(0.75)
+        line.line.color.rgb = RGBColor(0xE5, 0xE5, 0xE5)
+        line.line.width = Pt(0.25)
 
         # Top half: rotated 180
         _render_half(slide, dig, top_in=0.0, rotation=180)
