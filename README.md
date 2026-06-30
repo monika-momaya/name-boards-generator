@@ -19,7 +19,7 @@ PowerPoint and use File > Export to get a PDF.
 ## Fonts — important, read before deploying
 
 **No font files are included in this repo.** Alternate Gothic ATF Demi and
-Alternate Gothic ATF Medium are commercially licensed fonts; redistributing
+AlternateGothic2 BT are commercially licensed fonts; redistributing
 them in a public (or shared private) repository would violate that license.
 
 Instead, the app has a **font upload option in the sidebar** at runtime:
@@ -29,7 +29,7 @@ persisted to the repo). This keeps the codebase itself license-clean.
 
 Two things worth knowing:
 1. **You (or whoever runs this) still need a valid license** to use
-   Alternate Gothic ATF Demi/Medium — the upload option avoids the *app*
+   Alternate Gothic ATF Demi / AlternateGothic2 BT — the upload option avoids the *app*
    being a distribution channel, but doesn't grant usage rights on its own.
 2. **Font is not embedded inside the generated PPTX file.** The app sets the
    font *name* in the slide XML, but python-pptx does not embed the actual
@@ -37,7 +37,7 @@ Two things worth knowing:
    - The in-app PDF preview/export will look correct (the uploaded font is
      installed server-side for rendering during that session).
    - If someone opens the downloaded .pptx on a different machine that
-     doesn't have Alternate Gothic ATF Demi/Medium installed, PowerPoint
+     doesn't have Alternate Gothic ATF Demi / AlternateGothic2 BT installed, PowerPoint
      will silently substitute a default font for the name/title text.
    - For guaranteed visual fidelity outside this app, install the actual
      font files on whichever machine will ultimately open/print the PPTX,

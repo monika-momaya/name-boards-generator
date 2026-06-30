@@ -5,9 +5,9 @@ Generates A4-landscape PPTX where each slide contains a fold-over tent card:
   - Top half: NAME + TITLE/COMPANY, rotated 180°
   - Bottom half: NAME + TITLE/COMPANY, upright
 
-Font: Alternate Gothic No.2 BT (used for both Name and Title/Company —
-  Name is ALL CAPS and auto-shrinks to fit one line; Title/Company is
-  Title Case, smaller, and allowed to wrap to 2 lines).
+Fonts:
+  - Name:           Alternate Gothic ATF Demi   (ALL CAPS, auto-shrink to fit one line)
+  - Title/Company:  AlternateGothic2 BT (Title Case, allowed to wrap to 2 lines)
 
 Layout rule: if Title and Company each fit on their own line (within the
 max line count budget), they are stacked tightly (own lines). If either
@@ -38,10 +38,11 @@ import os
 SLIDE_W_IN = 11.69
 SLIDE_H_IN = 8.27
 
-# Font used for both Name and Title/Company. "Alternate Gothic No.2 BT" is
-# the correct, intended font for these name boards (single weight, used for
-# both elements — sized differently per the layout rules below).
-FONT_NAME_BOLD = "AlternateGothic2 BT"
+# These are the actual intended fonts. PowerPoint will use them correctly
+# on any machine that has them installed; otherwise it substitutes a
+# default font. Upload a matching .ttf/.otf in the app sidebar to also get
+# accurate auto-shrink/wrap measurements during generation.
+FONT_NAME_BOLD = "Alternate Gothic ATF Demi"
 FONT_NAME_MEDIUM = "AlternateGothic2 BT"
 
 # Fallback fonts used ONLY for measuring text width if the real TTF files
@@ -56,10 +57,17 @@ TITLE_COLOR = RGBColor(0x00, 0x00, 0x00)
 
 # Box geometry (inches) — tuned to match the sample reference image
 MARGIN_X = 0.55
-NAME_MAX_PT = 54
-NAME_MIN_PT = 22
-TITLE_MAX_PT = 28
-TITLE_MIN_PT = 16
+
+# Default (fixed) sizes per spec. These are no longer auto-shrunk on a
+# sliding scale — every board uses these sizes by default. If a particular
+# name/title is too long and overflows its box, the generated PPTX is fully
+# editable, so the box/text can be resized by hand in PowerPoint for that
+# one slide. Keeping MAX == MIN here effectively fixes the size while
+# reusing the existing fit/wrap helper functions unchanged.
+NAME_MAX_PT = 90
+NAME_MIN_PT = 90
+TITLE_MAX_PT = 50
+TITLE_MIN_PT = 50
 
 # Vertical gap between Name block and Title block (loose)
 NAME_TITLE_GAP_IN = 0.12
@@ -78,14 +86,13 @@ if os.path.isfile(_DEFAULT_FONT_PATH):
     _CUSTOM_FONT_PATHS["medium"] = _DEFAULT_FONT_PATH
 
 
-def register_fonts(font_path: Optional[str] = None) -> None:
-    """Register the actual TTF/OTF font file for accurate width measurement.
-    Used for both Name and Title/Company, since this app uses a single font
-    throughout (sized differently per role)."""
+def register_fonts(demi_path: Optional[str], medium_path: Optional[str]) -> None:
+    """Register actual TTF/OTF font files for accurate width measurement."""
     global _CUSTOM_FONT_PATHS
-    if font_path and os.path.isfile(font_path):
-        _CUSTOM_FONT_PATHS["demi"] = font_path
-        _CUSTOM_FONT_PATHS["medium"] = font_path
+    if demi_path and os.path.isfile(demi_path):
+        _CUSTOM_FONT_PATHS["demi"] = demi_path
+    if medium_path and os.path.isfile(medium_path):
+        _CUSTOM_FONT_PATHS["medium"] = medium_path
 
 
 def _get_measure_font(weight: str, size_pt: int) -> ImageFont.FreeTypeFont:
@@ -318,7 +325,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
     p = name_box.text_frame.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
-    _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=False, color=NAME_COLOR, caps=True)
+    _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=True, color=NAME_COLOR, caps=True)
 
     # --- Title/Company textbox(es) ---
     if title_lines:
