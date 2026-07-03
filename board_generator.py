@@ -325,7 +325,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
     p = name_box.text_frame.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
-    _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=True, color=NAME_COLOR, caps=True)
+    _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=False, color=NAME_COLOR, caps=True)
 
     # --- Title/Company textbox(es) ---
     if title_lines:
