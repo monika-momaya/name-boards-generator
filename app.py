@@ -6,7 +6,7 @@ import zipfile
 import pandas as pd
 import streamlit as st
 
-from board_generator import Dignitary, build_presentation, register_fonts
+from board_generator import Dignitary, build_presentation, register_fonts, embed_font_in_pptx
 from excel_parser import parse_dignitaries
 
 st.set_page_config(page_title="Name Board Generator", page_icon="🪧", layout="centered")
@@ -108,7 +108,27 @@ if uploaded is not None:
             prs = build_presentation(dignitaries)
             pptx_buf = io.BytesIO()
             prs.save(pptx_buf)
-            pptx_buf.seek(0)
+            pptx_bytes = pptx_buf.getvalue()
+
+        # Embed the font directly into the PPTX so it renders correctly
+        # on any machine, even without the font installed locally.
+        if font_path:
+            with st.spinner("Embedding font..."):
+                try:
+                    pptx_bytes = embed_font_in_pptx(
+                        pptx_bytes, font_path, "AlternateGothic2 BT"
+                    )
+                except Exception as e:
+                    st.warning(f"Font could not be embedded ({e}). The PPTX will still reference the font by name.")
+        else:
+            st.info(
+                "💡 Upload your AlternateGothic2 BT font file in the sidebar to embed it "
+                "into the PPTX — this ensures the correct font renders on every machine, "
+                "including those without the font installed."
+            )
+
+        pptx_buf = io.BytesIO(pptx_bytes)
+        pptx_buf.seek(0)
 
         st.success("Name boards generated!")
         st.download_button(

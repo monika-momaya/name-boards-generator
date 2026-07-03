@@ -18,9 +18,13 @@ comma-separated line instead.
 from __future__ import annotations
 
 import copy
+import io
+import uuid
+import zipfile
 from dataclasses import dataclass
 from typing import Optional
 
+from lxml import etree
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
@@ -366,3 +370,122 @@ def build_presentation(dignitaries: list[Dignitary]) -> Presentation:
         _render_half(slide, dig, top_in=HALF_H_IN, rotation=0)
 
     return prs
+
+
+# ---------------------------------------------------------------------------
+# Font embedding
+# ---------------------------------------------------------------------------
+
+def _obfuscate_font(font_data: bytes, guid: str) -> bytes:
+    """
+    Obfuscate font bytes per OOXML spec (ECMA-376 Part 1 §15.2.12.2).
+
+    The first 32 bytes of the font are XOR'd with the 16-byte key derived
+    from the GUID. GUID components 1–3 are interpreted little-endian
+    (Windows COM convention); components 4–5 are big-endian.
+    The 16-byte key is applied twice to cover all 32 bytes.
+    """
+    g = guid.strip('{}').replace('-', '')
+    c1 = bytes(reversed(bytes.fromhex(g[0:8])))   # 4 bytes LE
+    c2 = bytes(reversed(bytes.fromhex(g[8:12])))  # 2 bytes LE
+    c3 = bytes(reversed(bytes.fromhex(g[12:16]))) # 2 bytes LE
+    c4 = bytes.fromhex(g[16:20])                  # 2 bytes BE
+    c5 = bytes.fromhex(g[20:32])                  # 6 bytes BE
+    key = c1 + c2 + c3 + c4 + c5                  # 16 bytes total
+    result = bytearray(font_data)
+    for i in range(min(32, len(result))):
+        result[i] ^= key[i % 16]
+    return bytes(result)
+
+
+def embed_font_in_pptx(pptx_bytes: bytes, font_path: str, font_name: str) -> bytes:
+    """
+    Embed a TrueType/OpenType font file directly into PPTX bytes.
+
+    The font is obfuscated per the OOXML spec and stored as a part inside
+    the PPTX ZIP. This means the font travels with the file and renders
+    correctly on ANY machine, regardless of what fonts are locally installed.
+
+    Parameters
+    ----------
+    pptx_bytes : bytes   Raw bytes of the PPTX file (e.g. from BytesIO.getvalue())
+    font_path  : str     Path to the .ttf/.otf font file on disk
+    font_name  : str     Font family name exactly as used in the slide XML
+                         (must match the `typeface` attribute in the PPTX)
+
+    Returns
+    -------
+    bytes  Modified PPTX bytes with the font embedded.
+    """
+    # Namespaces
+    REL_NS       = 'http://schemas.openxmlformats.org/package/2006/relationships'
+    CT_NS        = 'http://schemas.openxmlformats.org/package/2006/content-types'
+    P_NS         = 'http://schemas.openxmlformats.org/presentationml/2006/main'
+    R_NS         = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    FONT_REL_TYPE = (
+        'http://schemas.openxmlformats.org/officeDocument/2006/relationships/font'
+    )
+
+    with open(font_path, 'rb') as fh:
+        font_data = fh.read()
+
+    # A fresh GUID per embedding: used both as the relationship Id and as
+    # the obfuscation key (PowerPoint derives the key from the rel Id GUID).
+    guid   = '{' + str(uuid.uuid4()).upper() + '}'
+    rel_id = guid                               # use GUID-style Id
+    font_part_name = 'ppt/fonts/font1.fntdata'
+
+    obfuscated = _obfuscate_font(font_data, guid)
+
+    in_buf  = io.BytesIO(pptx_bytes)
+    out_buf = io.BytesIO()
+
+    with zipfile.ZipFile(in_buf, 'r') as zin:
+        with zipfile.ZipFile(out_buf, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+
+                if item.filename == '[Content_Types].xml':
+                    tree = etree.fromstring(data)
+                    existing = {el.get('Extension', '') for el in tree}
+                    if 'fntdata' not in existing:
+                        el = etree.SubElement(tree, f'{{{CT_NS}}}Default')
+                        el.set('Extension', 'fntdata')
+                        el.set('ContentType', 'application/x-fontdata')
+                    data = etree.tostring(
+                        tree, xml_declaration=True, encoding='UTF-8', standalone=True
+                    )
+
+                elif item.filename == 'ppt/_rels/presentation.xml.rels':
+                    tree = etree.fromstring(data)
+                    rel = etree.SubElement(tree, f'{{{REL_NS}}}Relationship')
+                    rel.set('Id',     rel_id)
+                    rel.set('Type',   FONT_REL_TYPE)
+                    rel.set('Target', 'fonts/font1.fntdata')
+                    data = etree.tostring(
+                        tree, xml_declaration=True, encoding='UTF-8', standalone=True
+                    )
+
+                elif item.filename == 'ppt/presentation.xml':
+                    tree = etree.fromstring(data)
+                    ns = {'p': P_NS}
+                    emb_list = tree.find('p:embeddedFontLst', ns)
+                    if emb_list is None:
+                        emb_list = etree.SubElement(tree, f'{{{P_NS}}}embeddedFontLst')
+                    emb_font  = etree.SubElement(emb_list, f'{{{P_NS}}}embeddedFont')
+                    font_el   = etree.SubElement(emb_font, f'{{{P_NS}}}font')
+                    font_el.set('typeface', font_name)
+                    font_el.set('charset',  '0')
+                    regular   = etree.SubElement(emb_font, f'{{{P_NS}}}regular')
+                    regular.set(f'{{{R_NS}}}id', rel_id)
+                    data = etree.tostring(
+                        tree, xml_declaration=True, encoding='UTF-8', standalone=True
+                    )
+
+                zout.writestr(item, data)
+
+            # Add the obfuscated font as a new part in the ZIP
+            zout.writestr(font_part_name, obfuscated)
+
+    out_buf.seek(0)
+    return out_buf.getvalue()
