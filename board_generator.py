@@ -307,7 +307,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
         dignitary.title, dignitary.company, max_width_in
     )
 
-    # Compute block heights (approx: 1.2x font size in points -> inches)
+    # Compute block heights (approx: 1.15x font size in points -> inches)
     def line_h_in(pt_size):
         return (pt_size * 1.15) / 72.0
 
@@ -320,7 +320,17 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
             title_block_h = line_h_in(title_size) + TITLE_COMPANY_GAP_IN + line_h_in(title_size)
 
     total_h = name_h + (NAME_TITLE_GAP_IN if title_lines else 0) + title_block_h
-    start_y = half_top + (half_h - total_h) / 2
+
+    # Use the two-line layout as the reference height for vertical centering.
+    # This keeps the name at a consistent Y position regardless of whether
+    # the title/company is one line or two — single-line boards look the same
+    # as two-line ones, with extra whitespace falling at the bottom of the
+    # block rather than being distributed as extra gap between name and title.
+    two_line_ref_h = name_h + NAME_TITLE_GAP_IN + (
+        2 * line_h_in(TITLE_MAX_PT) + TITLE_COMPANY_GAP_IN
+    )
+    centering_h = max(total_h, two_line_ref_h)
+    start_y = half_top + (half_h - centering_h) / 2
 
     # In the top half (rotation=180), the card folds over so the vertical
     # order reverses: whatever is at the top of the slide half ends up at
