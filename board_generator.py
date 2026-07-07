@@ -58,19 +58,18 @@ FALLBACK_FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 NAME_COLOR = RGBColor(0x00, 0x00, 0x00)
 TITLE_COLOR = RGBColor(0x00, 0x00, 0x00)
 
-# Box geometry (inches) — tuned to match the sample reference image
-MARGIN_X = 0.55
+# Box geometry
+# Textbox width is fixed at 29 cm; margin is derived to centre it on the slide.
+# SLIDE_W_IN = 11.69 in = 29.693 cm  →  each side margin = (29.693 - 29) / 2 cm
+TEXTBOX_W_IN = 29 / 2.54          # 29 cm → inches
+MARGIN_X     = (SLIDE_W_IN - TEXTBOX_W_IN) / 2   # ≈ 0.136 in per side
 
-# Default (fixed) sizes per spec. These are no longer auto-shrunk on a
-# sliding scale — every board uses these sizes by default. If a particular
-# name/title is too long and overflows its box, the generated PPTX is fully
-# editable, so the box/text can be resized by hand in PowerPoint for that
-# one slide. Keeping MAX == MIN here effectively fixes the size while
-# reusing the existing fit/wrap helper functions unchanged.
-NAME_MAX_PT = 95
-NAME_MIN_PT = 95
-TITLE_MAX_PT = 50
-TITLE_MIN_PT = 50
+# Fixed font sizes. MAX == MIN disables auto-shrink; the PPTX is fully
+# editable so any overflow can be resized by hand in PowerPoint.
+NAME_MAX_PT  = 95
+NAME_MIN_PT  = 95
+TITLE_MAX_PT = 55
+TITLE_MIN_PT = 55
 
 # Vertical gap between Name block and Title block (loose)
 NAME_TITLE_GAP_IN = 0.12
@@ -297,7 +296,7 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float, ma
 
 def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
     """Render one half (top or bottom) of the tent card."""
-    max_width_in = SLIDE_W_IN - 2 * MARGIN_X
+    max_width_in = TEXTBOX_W_IN
     half_top = top_in
     half_h = HALF_H_IN
 
@@ -340,7 +339,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
     p = name_box.text_frame.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
-    _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=False, color=NAME_COLOR, caps=True)
+    _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=True, color=NAME_COLOR, caps=True)
 
     # --- Title/Company textbox(es) ---
     if title_lines:
