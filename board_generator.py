@@ -323,8 +323,20 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
     total_h = name_h + (NAME_TITLE_GAP_IN if title_lines else 0) + title_block_h
     start_y = half_top + (half_h - total_h) / 2
 
+    # In the top half (rotation=180), the card folds over so the vertical
+    # order reverses: whatever is at the top of the slide half ends up at
+    # the BOTTOM when folded. So we swap Name and Title positions in the
+    # top half so the folded result reads: Name on top, Title below.
+    # Bottom half (rotation=0): Name first, Title below — no swap needed.
+    if rotation == 180 and title_lines:
+        name_y  = start_y + title_block_h + NAME_TITLE_GAP_IN
+        title_y = start_y
+    else:
+        name_y  = start_y
+        title_y = start_y + name_h + NAME_TITLE_GAP_IN
+
     # --- Name textbox ---
-    name_box = _add_textbox(slide, MARGIN_X, start_y, max_width_in, name_h, rotation=rotation)
+    name_box = _add_textbox(slide, MARGIN_X, name_y, max_width_in, name_h, rotation=rotation)
     p = name_box.text_frame.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
@@ -332,8 +344,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
 
     # --- Title/Company textbox(es) ---
     if title_lines:
-        title_top = start_y + name_h + NAME_TITLE_GAP_IN
-        title_box = _add_textbox(slide, MARGIN_X, title_top, max_width_in, title_block_h, rotation=rotation)
+        title_box = _add_textbox(slide, MARGIN_X, title_y, max_width_in, title_block_h, rotation=rotation)
         tf = title_box.text_frame
         for i, line in enumerate(title_lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
@@ -451,12 +462,35 @@ def embed_font_in_pptx(pptx_bytes: bytes, font_path: str, font_name: str) -> byt
                     font_block = (
                         f'<p:embeddedFontLst>'
                         f'<p:embeddedFont>'
-                        f'<p:font typeface="{font_name}" charset="0"/>'
+                        f'<p:font typeface="{font_name}" pitchFamily="0" charset="0"/>'
                         f'<p:regular r:id="{rel_id}"/>'
                         f'</p:embeddedFont>'
                         f'</p:embeddedFontLst>'
                     )
-                    text = text.replace('</p:presentation>', font_block + '</p:presentation>')
+                    # Per the OOXML schema, embeddedFontLst must come after
+                    # notesSz and before defaultTextStyle. notesSz is always
+                    # self-closing (<p:notesSz .../>) so we anchor on the
+                    # element that immediately follows it instead.
+                    if '<p:defaultTextStyle>' in text:
+                        text = text.replace(
+                            '<p:defaultTextStyle>',
+                            font_block + '<p:defaultTextStyle>',
+                            1
+                        )
+                    else:
+                        # Fallback for unusual presentation structures
+                        import re
+                        text, n = re.subn(
+                            r'(<p:notesSz\b[^>]*/\s*>)',
+                            r'\1' + font_block,
+                            text, count=1
+                        )
+                        if not n:
+                            text = text.replace(
+                                '</p:presentation>',
+                                font_block + '</p:presentation>',
+                                1
+                            )
 
                 zout.writestr(item, text.encode('utf-8') if text is not None else data)
 
