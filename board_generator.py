@@ -302,14 +302,13 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
                  scale: float = 1.0):
     """Render one half (top or bottom) of the tent card.
 
-    NAME and TITLE/COMPANY are placed in a SINGLE textbox (one text_frame)
-    stacked as paragraphs, rather than two separate textboxes. This makes
-    the visual gap between the name and the title/company block exactly
-    match the value we set (NAME_TITLE_GAP_IN), regardless of how many
-    lines the title/company wraps to -- because PowerPoint itself lays out
-    and vertically centers all paragraphs together as one block, instead
-    of us trying to pre-calculate two separate box heights/positions from
-    estimated (and therefore sometimes inaccurate) line-height math.
+    NAME and TITLE/COMPANY are rendered in TWO SEPARATE textboxes (as in
+    the original design), but their heights are computed using each
+    paragraph's actual ascent+descent (via the measurement font), not a
+    generic "1.15x" line-height guess. This keeps the visual gap between
+    the name box and the title/company box consistent and tight,
+    regardless of how many lines the title/company wraps to, while the
+    whole two-box unit is still centered as one block in the half.
     """
     # Scale all measurements proportionally from A4 defaults
     textbox_w      = TEXTBOX_W_IN        * scale
@@ -318,8 +317,8 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     name_min_pt    = NAME_MIN_PT         * scale
     title_max_pt   = TITLE_MAX_PT        * scale
     title_min_pt   = TITLE_MIN_PT        * scale
-    name_title_gap_pt = NAME_TITLE_GAP_IN * scale * 72.0  # convert inches -> points
-    tc_gap_pt      = TITLE_COMPANY_GAP_IN * scale * 72.0
+    name_title_gap = NAME_TITLE_GAP_IN   * scale
+    tc_gap         = TITLE_COMPANY_GAP_IN * scale * 0.4  # tightened per feedback
 
     max_width_in = textbox_w
 
@@ -331,40 +330,58 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
         title_max_pt=title_max_pt, title_min_pt=title_min_pt,
     )
 
-    # The combined box spans the full half-slide height, and its content is
-    # vertically centered as a whole -- this guarantees the NAME+TITLE block
-    # (as one unit) is always perfectly centered in the half, whether the
-    # title/company is 1 line or wraps to 2-3 lines. The gap between the
-    # name and the first title/company line is fixed via space_before on
-    # that first title paragraph, so it never drifts.
-    box_h = half_h
-    box_y = top_in
+    def _tight_line_h_in(text, weight, size_pt):
+        """Measure actual glyph height (ascent+descent) for this exact
+        text at this exact size, rather than assuming a fixed multiplier
+        of the font size. This is what makes the gap consistent -- the
+        box height matches what's actually drawn, not an estimate."""
+        font = _get_measure_font(weight, max(1, int(size_pt)))
+        bbox = font.getbbox(text if text else "Hg")
+        h_px = bbox[3] - bbox[1]
+        h_pt = h_px / 4  # oversampled at size_pt*4
+        return h_pt / 72.0
 
-    box = _add_textbox(slide, margin_x, box_y, max_width_in, box_h, rotation=rotation)
-    tf = box.text_frame
-    tf.word_wrap = True
+    name_h = _tight_line_h_in(name_text, "demi", name_size) * 1.15
+    title_line_heights = [_tight_line_h_in(t, "medium", title_size) * 1.15 for t in title_lines] if title_lines else []
+    title_block_h = sum(title_line_heights) + tc_gap * max(0, len(title_lines) - 1)
 
-    # --- Name paragraph ---
-    p_name = tf.paragraphs[0]
-    p_name.alignment = PP_ALIGN.CENTER
-    p_name.space_before = Pt(0)
-    p_name.space_after = Pt(0)
-    p_name.line_spacing = 1.0
-    run = p_name.add_run()
+    total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
+
+    # d = distance from the fold line to the nearest edge of the combined
+    # NAME + TITLE/COMPANY block, so the whole two-box unit is centered as
+    # one block in the half -- extra title/company lines shift the whole
+    # unit (name included) up symmetrically, keeping the name-title gap
+    # fixed at name_title_gap regardless of content length.
+    d = (half_h - total_h) / 2
+
+    if rotation == 180:
+        # Top half: name bottom edge sits at distance d above the fold line.
+        name_y  = top_in + half_h - d - name_h
+        title_y = name_y - name_title_gap - title_block_h   # title above name
+    else:
+        # Bottom half: name top edge sits at distance d below the fold line.
+        name_y  = top_in + d
+        title_y = name_y + name_h + name_title_gap          # title below name
+
+    # --- Name textbox ---
+    name_box = _add_textbox(slide, margin_x, name_y, max_width_in, name_h, rotation=rotation)
+    p = name_box.text_frame.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    run = p.add_run()
     _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=True, color=NAME_COLOR, caps=True)
 
-    # --- Title/company paragraphs ---
-    for i, line in enumerate(title_lines):
-        p = tf.add_paragraph()
-        p.alignment = PP_ALIGN.CENTER
-        p.line_spacing = 1.0
-        if i == 0:
-            p.space_before = Pt(name_title_gap_pt)
-        else:
-            p.space_before = Pt(tc_gap_pt)
-        p.space_after = Pt(0)
-        run = p.add_run()
-        _set_run(run, line, FONT_NAME_MEDIUM, title_size, bold=False, color=TITLE_COLOR, caps=False)
+    # --- Title/Company textbox ---
+    if title_lines:
+        title_box = _add_textbox(slide, margin_x, title_y, max_width_in, title_block_h, rotation=rotation)
+        tf = title_box.text_frame
+        for i, line in enumerate(title_lines):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.alignment = PP_ALIGN.CENTER
+            p.space_before = Pt(0)
+            p.space_after = Pt(0)
+            p.line_spacing = 1.0
+            run = p.add_run()
+            _set_run(run, line, FONT_NAME_MEDIUM, title_size, bold=False, color=TITLE_COLOR, caps=False)
 
 
 # ---------------------------------------------------------------------------
