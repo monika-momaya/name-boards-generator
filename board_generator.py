@@ -302,13 +302,13 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
                  scale: float = 1.0):
     """Render one half (top or bottom) of the tent card.
 
-    NAME and TITLE/COMPANY are rendered in TWO SEPARATE textboxes (as in
-    the original design), but their heights are computed using each
-    paragraph's actual ascent+descent (via the measurement font), not a
-    generic "1.15x" line-height guess. This keeps the visual gap between
-    the name box and the title/company box consistent and tight,
-    regardless of how many lines the title/company wraps to, while the
-    whole two-box unit is still centered as one block in the half.
+    NAME and TITLE/COMPANY are two SEPARATE textboxes. Box heights use a
+    safe, generous line-height multiplier (based on font point size, not
+    fragile glyph-bbox measurement) so text never overflows or overlaps
+    its box regardless of what font PowerPoint actually substitutes at
+    render time. The two boxes are positioned as one centered unit so the
+    gap between name and title/company stays visually fixed no matter how
+    many lines the title/company wraps to.
     """
     # Scale all measurements proportionally from A4 defaults
     textbox_w      = TEXTBOX_W_IN        * scale
@@ -318,7 +318,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     title_max_pt   = TITLE_MAX_PT        * scale
     title_min_pt   = TITLE_MIN_PT        * scale
     name_title_gap = NAME_TITLE_GAP_IN   * scale
-    tc_gap         = TITLE_COMPANY_GAP_IN * scale * 0.4  # tightened per feedback
+    tc_gap         = TITLE_COMPANY_GAP_IN * scale
 
     max_width_in = textbox_w
 
@@ -330,20 +330,15 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
         title_max_pt=title_max_pt, title_min_pt=title_min_pt,
     )
 
-    def _tight_line_h_in(text, weight, size_pt):
-        """Measure actual glyph height (ascent+descent) for this exact
-        text at this exact size, rather than assuming a fixed multiplier
-        of the font size. This is what makes the gap consistent -- the
-        box height matches what's actually drawn, not an estimate."""
-        font = _get_measure_font(weight, max(1, int(size_pt)))
-        bbox = font.getbbox(text if text else "Hg")
-        h_px = bbox[3] - bbox[1]
-        h_pt = h_px / 4  # oversampled at size_pt*4
-        return h_pt / 72.0
+    def line_h_in(pt_size):
+        # Safe line-height: point size * 1.2 covers ascent+descent for
+        # virtually any font PowerPoint might substitute, avoiding overlap.
+        return (pt_size * 1.2) / 72.0
 
-    name_h = _tight_line_h_in(name_text, "demi", name_size) * 1.15
-    title_line_heights = [_tight_line_h_in(t, "medium", title_size) * 1.15 for t in title_lines] if title_lines else []
-    title_block_h = sum(title_line_heights) + tc_gap * max(0, len(title_lines) - 1)
+    name_h = line_h_in(name_size)
+    title_block_h = 0.0
+    if title_lines:
+        title_block_h = (len(title_lines) * line_h_in(title_size)) + (len(title_lines) - 1) * tc_gap
 
     total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
