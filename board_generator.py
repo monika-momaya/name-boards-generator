@@ -337,19 +337,15 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
 
     total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
-    # d = distance from the fold line to the nearest edge of the NAME box.
-    # This is now a FIXED value based on the name block alone (not on how
-    # many lines of title/company text follow), so the name always sits at
-    # exactly the same distance from the fold line -- whether a person has
-    # 1 line or 3 lines of title/company content underneath. Extra title
-    # lines simply extend further away from the fold instead of pushing
-    # the whole block (and the name) away from it.
-    d = (half_h - name_h) / 2 - (name_title_gap + title_block_h) / 2 if title_lines else (half_h - name_h) / 2
-    # Keep d from going negative/too small if content is very long; fall
-    # back to a small fixed minimum gap from the fold line in that case.
-    min_d = 0.15
-    if d < min_d:
-        d = min_d
+    # d = distance from the fold line to the nearest edge of the combined
+    # NAME + TITLE/COMPANY block. Centering the WHOLE block (not just the
+    # name) in the half means: for a single title/company line, the name
+    # sits close to the fold (as in the Modi example); for a 2-3 line
+    # title/company block, the entire block -- name included -- shifts up
+    # to stay perfectly centered, while the gap between name and title
+    # stays fixed at NAME_TITLE_GAP_IN. This auto-centers/auto-middle-aligns
+    # the whole block regardless of how many title/company lines there are.
+    d = (half_h - total_h) / 2
 
     if rotation == 180:
         # Top half: name bottom edge sits at distance d above the fold line.
