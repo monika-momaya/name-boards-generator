@@ -337,19 +337,19 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
 
     total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
-    # Use a FIXED 3-line reference block height for vertical centering so that
-    # every board -- whether the title/company content is 1 line or wraps to
-    # 2-3 lines -- has its NAME positioned at the exact same distance "d" from
-    # the fold line. This keeps the top and bottom halves consistent for
-    # both short and long title/company blocks.
-    max_ref_lines = 3
-    three_line_ref_h = name_h + name_title_gap + (max_ref_lines * line_h_in(title_max_pt) + (max_ref_lines - 1) * tc_gap)
-    centering_h = three_line_ref_h
-    # d = distance from the fold line to the nearest edge of the name box.
-    # Using the same d in both halves makes the layout perfectly symmetric:
-    # the name sits at the same distance from the fold whether you're looking
-    # at the front or the back of the folded card.
-    d = (half_h - centering_h) / 2
+    # d = distance from the fold line to the nearest edge of the NAME box.
+    # This is now a FIXED value based on the name block alone (not on how
+    # many lines of title/company text follow), so the name always sits at
+    # exactly the same distance from the fold line -- whether a person has
+    # 1 line or 3 lines of title/company content underneath. Extra title
+    # lines simply extend further away from the fold instead of pushing
+    # the whole block (and the name) away from it.
+    d = (half_h - name_h) / 2 - (name_title_gap + title_block_h) / 2 if title_lines else (half_h - name_h) / 2
+    # Keep d from going negative/too small if content is very long; fall
+    # back to a small fixed minimum gap from the fold line in that case.
+    min_d = 0.15
+    if d < min_d:
+        d = min_d
 
     if rotation == 180:
         # Top half: name bottom edge sits at distance d above the fold line.
