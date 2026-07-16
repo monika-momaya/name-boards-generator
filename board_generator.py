@@ -72,9 +72,9 @@ TITLE_MAX_PT = 55
 TITLE_MIN_PT = 55
 
 # Vertical gap between Name block and Title block (loose)
-NAME_TITLE_GAP_IN = 0.04  # tightened further per user feedback
+NAME_TITLE_GAP_IN = 0.07  # tightened: reduce gap between name and title/company
 # Vertical gap between Title line and Company line (tight)
-TITLE_COMPANY_GAP_IN = 0.01  # tightened further per user feedback
+TITLE_COMPANY_GAP_IN = 0.02
 
 HALF_H_IN = SLIDE_H_IN / 2
 
@@ -300,16 +300,7 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float,
 def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
                  slide_w: float = SLIDE_W_IN, half_h: float = HALF_H_IN,
                  scale: float = 1.0):
-    """Render one half (top or bottom) of the tent card.
-
-    NAME and TITLE/COMPANY are two SEPARATE textboxes. Box heights use a
-    safe, generous line-height multiplier (based on font point size, not
-    fragile glyph-bbox measurement) so text never overflows or overlaps
-    its box regardless of what font PowerPoint actually substitutes at
-    render time. The two boxes are positioned as one centered unit so the
-    gap between name and title/company stays visually fixed no matter how
-    many lines the title/company wraps to.
-    """
+    """Render one half (top or bottom) of the tent card."""
     # Scale all measurements proportionally from A4 defaults
     textbox_w      = TEXTBOX_W_IN        * scale
     margin_x       = (slide_w - textbox_w) / 2
@@ -317,8 +308,9 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     name_min_pt    = NAME_MIN_PT         * scale
     title_max_pt   = TITLE_MAX_PT        * scale
     title_min_pt   = TITLE_MIN_PT        * scale
-    name_title_gap = 0.70 / 2.54 * scale
-    tc_gap         = 0.25 / 2.54 * scale
+    name_title_gap = NAME_TITLE_GAP_IN   * scale
+    tc_gap         = TITLE_COMPANY_GAP_IN * scale
+    line_spacing   = Pt(50 * scale)
 
     max_width_in = textbox_w
 
@@ -331,34 +323,41 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     )
 
     def line_h_in(pt_size):
-        # Safe line-height: point size * 1.2 covers ascent+descent for
-        # virtually any font PowerPoint might substitute, avoiding overlap.
-        return (pt_size * 1.2) / 72.0
+        return (pt_size * 1.15) / 72.0
 
-    name_h = line_h_in(name_size)
+    name_h = line_h_in(name_size) * 1.05
     title_block_h = 0.0
     if title_lines:
-        # Keep title/company block compact so the visual gap to the name
-        # is controlled primarily by NAME_TITLE_GAP_IN (not by extra box
-        # padding). Use a tighter internal height estimate.
-        title_block_h = (len(title_lines) * line_h_in(title_size) * 0.86) + (len(title_lines) - 1) * tc_gap
+        if len(title_lines) == 1:
+            title_block_h = line_h_in(title_size)
+        elif len(title_lines) == 2:
+            title_block_h = line_h_in(title_size) + tc_gap + line_h_in(title_size)
+        else:
+            title_block_h = (3 * line_h_in(title_size)) + (2 * tc_gap)
 
     total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
-    # d = distance from the fold line to the nearest edge of the combined
-    # NAME + TITLE/COMPANY block, so the whole two-box unit is centered as
-    # one block in the half -- extra title/company lines shift the whole
-    # unit (name included) up symmetrically, keeping the name-title gap
-    # fixed at name_title_gap regardless of content length.
-    d = 0.0
+    # d = distance from the fold line to the nearest edge of the NAME box.
+    # This is now a FIXED value based on the name block alone (not on how
+    # many lines of title/company text follow), so the name always sits at
+    # exactly the same distance from the fold line -- whether a person has
+    # 1 line or 3 lines of title/company content underneath. Extra title
+    # lines simply extend further away from the fold instead of pushing
+    # the whole block (and the name) away from it.
+    d = (half_h - name_h) / 2 - (name_title_gap + title_block_h) / 2 if title_lines else (half_h - name_h) / 2
+    # Keep d from going negative/too small if content is very long; fall
+    # back to a small fixed minimum gap from the fold line in that case.
+    min_d = 0.15
+    if d < min_d:
+        d = min_d
 
     if rotation == 180:
         # Top half: name bottom edge sits at distance d above the fold line.
-        name_y  = top_in + half_h - name_h
+        name_y  = top_in + half_h - d - name_h
         title_y = name_y - name_title_gap - title_block_h   # title above name
     else:
         # Bottom half: name top edge sits at distance d below the fold line.
-        name_y  = top_in
+        name_y  = top_in + d
         title_y = name_y + name_h + name_title_gap          # title below name
 
     # --- Name textbox ---
@@ -368,18 +367,16 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     run = p.add_run()
     _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=True, color=NAME_COLOR, caps=True)
 
-    # --- Title/Company textbox ---
+    # --- Title/Company textbox(es) ---
     if title_lines:
         title_box = _add_textbox(slide, margin_x, title_y, max_width_in, title_block_h, rotation=rotation)
-        title_box.text_frame.margin_top = 0
-        title_box.text_frame.margin_bottom = 0
         tf = title_box.text_frame
         for i, line in enumerate(title_lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.alignment = PP_ALIGN.CENTER
             p.space_before = Pt(0)
-            p.space_after = Pt(0)
-            p.line_spacing = 1.0
+            p.space_after  = Pt(0)
+            p.line_spacing = line_spacing
             run = p.add_run()
             _set_run(run, line, FONT_NAME_MEDIUM, title_size, bold=False, color=TITLE_COLOR, caps=False)
 
