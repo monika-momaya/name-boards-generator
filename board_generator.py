@@ -72,9 +72,9 @@ TITLE_MAX_PT = 55
 TITLE_MIN_PT = 55
 
 # Vertical gap between Name block and Title block (loose)
-NAME_TITLE_GAP_IN = 0.07  # tightened: reduce gap between name and title/company
+NAME_TITLE_GAP_IN = 0.04  # tightened further per user feedback
 # Vertical gap between Title line and Company line (tight)
-TITLE_COMPANY_GAP_IN = 0.02
+TITLE_COMPANY_GAP_IN = 0.01  # tightened further per user feedback
 
 HALF_H_IN = SLIDE_H_IN / 2
 
