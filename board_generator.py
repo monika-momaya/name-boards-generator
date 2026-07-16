@@ -350,7 +350,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     # one block in the half -- extra title/company lines shift the whole
     # unit (name included) up symmetrically, keeping the name-title gap
     # fixed at name_title_gap regardless of content length.
-    d = (half_h - total_h) / 2
+    d = max(0.0, (half_h - total_h) / 2 - 0.35)
 
     if rotation == 180:
         # Top half: name bottom edge sits at distance d above the fold line.
@@ -371,6 +371,8 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     # --- Title/Company textbox ---
     if title_lines:
         title_box = _add_textbox(slide, margin_x, title_y, max_width_in, title_block_h, rotation=rotation)
+        title_box.text_frame.margin_top = 0
+        title_box.text_frame.margin_bottom = 0
         tf = title_box.text_frame
         for i, line in enumerate(title_lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
