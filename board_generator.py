@@ -317,8 +317,8 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     name_min_pt    = NAME_MIN_PT         * scale
     title_max_pt   = TITLE_MAX_PT        * scale
     title_min_pt   = TITLE_MIN_PT        * scale
-    name_title_gap = NAME_TITLE_GAP_IN   * scale
-    tc_gap         = TITLE_COMPANY_GAP_IN * scale
+    name_title_gap = 0.70 / 2.54 * scale
+    tc_gap         = 0.25 / 2.54 * scale
 
     max_width_in = textbox_w
 
@@ -338,7 +338,10 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     name_h = line_h_in(name_size)
     title_block_h = 0.0
     if title_lines:
-        title_block_h = (len(title_lines) * line_h_in(title_size)) + (len(title_lines) - 1) * tc_gap
+        # Keep title/company block compact so the visual gap to the name
+        # is controlled primarily by NAME_TITLE_GAP_IN (not by extra box
+        # padding). Use a tighter internal height estimate.
+        title_block_h = (len(title_lines) * line_h_in(title_size) * 0.86) + (len(title_lines) - 1) * tc_gap
 
     total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
