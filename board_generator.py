@@ -350,15 +350,15 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     # one block in the half -- extra title/company lines shift the whole
     # unit (name included) up symmetrically, keeping the name-title gap
     # fixed at name_title_gap regardless of content length.
-    d = max(0.0, (half_h - total_h) / 2 - 0.35)
+    d = 0.0
 
     if rotation == 180:
         # Top half: name bottom edge sits at distance d above the fold line.
-        name_y  = top_in + half_h - d - name_h
+        name_y  = top_in + half_h - name_h
         title_y = name_y - name_title_gap - title_block_h   # title above name
     else:
         # Bottom half: name top edge sits at distance d below the fold line.
-        name_y  = top_in + d
+        name_y  = top_in
         title_y = name_y + name_h + name_title_gap          # title below name
 
     # --- Name textbox ---
