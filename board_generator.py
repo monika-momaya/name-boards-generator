@@ -72,7 +72,7 @@ TITLE_MAX_PT = 55
 TITLE_MIN_PT = 55
 
 # Vertical gap between Name block and Title block (loose)
-NAME_TITLE_GAP_IN = 0.35
+NAME_TITLE_GAP_IN = 0.18
 # Vertical gap between Title line and Company line (tight)
 TITLE_COMPANY_GAP_IN = 0.02
 
@@ -248,7 +248,10 @@ def _add_textbox(slide, left_in, top_in, width_in, height_in, rotation=0):
     return box
 
 
-def _build_title_company_lines(title: str, company: str, max_width_in: float, max_total_lines: int = 2):
+def _build_title_company_lines(title: str, company: str, max_width_in: float,
+                               max_total_lines: int = 2,
+                               title_max_pt: float = TITLE_MAX_PT,
+                               title_min_pt: float = TITLE_MIN_PT):
     """Decide layout for title/company per spec:
     - Try title on its own line, company on its own line, each within
       max_total_lines budget combined (default 2 lines total: 1 for title,
@@ -264,22 +267,22 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float, ma
     company = smart_title_case((company or "").strip())
 
     if not title and not company:
-        return [], TITLE_MAX_PT
+        return [], title_max_pt
     if title and not company:
-        size = fit_font_size(title, "medium", TITLE_MAX_PT, TITLE_MIN_PT, max_width_in)
+        size = fit_font_size(title, "medium", title_max_pt, title_min_pt, max_width_in)
         if _measure_width_in(title, "medium", size) <= max_width_in:
             return [title], size
-        wrapped = wrap_text_to_width(title, "medium", TITLE_MIN_PT, max_width_in, max_lines=2)
-        return (wrapped or [title]), TITLE_MIN_PT
+        wrapped = wrap_text_to_width(title, "medium", title_min_pt, max_width_in, max_lines=2)
+        return (wrapped or [title]), title_min_pt
     if company and not title:
-        size = fit_font_size(company, "medium", TITLE_MAX_PT, TITLE_MIN_PT, max_width_in)
+        size = fit_font_size(company, "medium", title_max_pt, title_min_pt, max_width_in)
         if _measure_width_in(company, "medium", size) <= max_width_in:
             return [company], size
-        wrapped = wrap_text_to_width(company, "medium", TITLE_MIN_PT, max_width_in, max_lines=2)
-        return (wrapped or [company]), TITLE_MIN_PT
+        wrapped = wrap_text_to_width(company, "medium", title_min_pt, max_width_in, max_lines=2)
+        return (wrapped or [company]), title_min_pt
 
     # Both present: try stacked (own line each) at decreasing size
-    for size in [TITLE_MAX_PT - i * 1.0 for i in range(int((TITLE_MAX_PT - TITLE_MIN_PT)) + 1)]:
+    for size in [title_max_pt - i * 1.0 for i in range(int((title_max_pt - title_min_pt)) + 1)]:
         title_fits = _measure_width_in(title, "medium", size) <= max_width_in
         company_fits = _measure_width_in(company, "medium", size) <= max_width_in
         if title_fits and company_fits:
@@ -287,27 +290,38 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float, ma
 
     # Stacking failed even at min size -> merge into comma-separated line(s)
     merged = f"{title}, {company}"
-    size = fit_font_size(merged, "medium", TITLE_MAX_PT, TITLE_MIN_PT, max_width_in)
+    size = fit_font_size(merged, "medium", title_max_pt, title_min_pt, max_width_in)
     if _measure_width_in(merged, "medium", size) <= max_width_in:
         return [merged], size
-    wrapped = wrap_text_to_width(merged, "medium", TITLE_MIN_PT, max_width_in, max_lines=2)
-    return (wrapped or [merged]), TITLE_MIN_PT
+    wrapped = wrap_text_to_width(merged, "medium", title_min_pt, max_width_in, max_lines=2)
+    return (wrapped or [merged]), title_min_pt
 
 
-def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
+def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
+                 slide_w: float = SLIDE_W_IN, half_h: float = HALF_H_IN,
+                 scale: float = 1.0):
     """Render one half (top or bottom) of the tent card."""
-    max_width_in = TEXTBOX_W_IN
-    half_top = top_in
-    half_h = HALF_H_IN
+    # Scale all measurements proportionally from A4 defaults
+    textbox_w      = TEXTBOX_W_IN        * scale
+    margin_x       = (slide_w - textbox_w) / 2
+    name_max_pt    = NAME_MAX_PT         * scale
+    name_min_pt    = NAME_MIN_PT         * scale
+    title_max_pt   = TITLE_MAX_PT        * scale
+    title_min_pt   = TITLE_MIN_PT        * scale
+    name_title_gap = NAME_TITLE_GAP_IN   * scale
+    tc_gap         = TITLE_COMPANY_GAP_IN * scale
+    line_spacing   = Pt(50 * scale)
+
+    max_width_in = textbox_w
 
     name_text = dignitary.name.strip()
-    name_size = fit_font_size(name_text, "demi", NAME_MAX_PT, NAME_MIN_PT, max_width_in)
+    name_size = fit_font_size(name_text, "demi", name_max_pt, name_min_pt, max_width_in)
 
     title_lines, title_size = _build_title_company_lines(
-        dignitary.title, dignitary.company, max_width_in
+        dignitary.title, dignitary.company, max_width_in,
+        title_max_pt=title_max_pt, title_min_pt=title_min_pt,
     )
 
-    # Compute block heights (approx: 1.15x font size in points -> inches)
     def line_h_in(pt_size):
         return (pt_size * 1.15) / 72.0
 
@@ -317,35 +331,31 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
         if len(title_lines) == 1:
             title_block_h = line_h_in(title_size)
         else:
-            title_block_h = line_h_in(title_size) + TITLE_COMPANY_GAP_IN + line_h_in(title_size)
+            title_block_h = line_h_in(title_size) + tc_gap + line_h_in(title_size)
 
-    total_h = name_h + (NAME_TITLE_GAP_IN if title_lines else 0) + title_block_h
+    total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
-    # Use the two-line layout as the reference height for vertical centering.
-    # This keeps the name at a consistent Y position regardless of whether
-    # the title/company is one line or two — single-line boards look the same
-    # as two-line ones, with extra whitespace falling at the bottom of the
-    # block rather than being distributed as extra gap between name and title.
-    two_line_ref_h = name_h + NAME_TITLE_GAP_IN + (
-        2 * line_h_in(TITLE_MAX_PT) + TITLE_COMPANY_GAP_IN
-    )
+    # Use the two-line layout as the reference height for vertical centering
+    # so single-line boards look the same as two-line ones.
+    two_line_ref_h = name_h + name_title_gap + (2 * line_h_in(title_max_pt) + tc_gap)
     centering_h = max(total_h, two_line_ref_h)
-    start_y = half_top + (half_h - centering_h) / 2
+    # d = distance from the fold line to the nearest edge of the name box.
+    # Using the same d in both halves makes the layout perfectly symmetric:
+    # the name sits at the same distance from the fold whether you're looking
+    # at the front or the back of the folded card.
+    d = (half_h - centering_h) / 2
 
-    # In the top half (rotation=180), the card folds over so the vertical
-    # order reverses: whatever is at the top of the slide half ends up at
-    # the BOTTOM when folded. So we swap Name and Title positions in the
-    # top half so the folded result reads: Name on top, Title below.
-    # Bottom half (rotation=0): Name first, Title below — no swap needed.
-    if rotation == 180 and title_lines:
-        name_y  = start_y + title_block_h + NAME_TITLE_GAP_IN
-        title_y = start_y
+    if rotation == 180:
+        # Top half: name bottom edge sits at distance d above the fold line.
+        name_y  = top_in + half_h - d - name_h
+        title_y = name_y - name_title_gap - title_block_h   # title above name
     else:
-        name_y  = start_y
-        title_y = start_y + name_h + NAME_TITLE_GAP_IN
+        # Bottom half: name top edge sits at distance d below the fold line.
+        name_y  = top_in + d
+        title_y = name_y + name_h + name_title_gap          # title below name
 
     # --- Name textbox ---
-    name_box = _add_textbox(slide, MARGIN_X, name_y, max_width_in, name_h, rotation=rotation)
+    name_box = _add_textbox(slide, margin_x, name_y, max_width_in, name_h, rotation=rotation)
     p = name_box.text_frame.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
@@ -353,40 +363,58 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int):
 
     # --- Title/Company textbox(es) ---
     if title_lines:
-        title_box = _add_textbox(slide, MARGIN_X, title_y, max_width_in, title_block_h, rotation=rotation)
+        title_box = _add_textbox(slide, margin_x, title_y, max_width_in, title_block_h, rotation=rotation)
         tf = title_box.text_frame
         for i, line in enumerate(title_lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.alignment = PP_ALIGN.CENTER
-            # Line spacing between Title/Company lines: set to "Exactly 50pt"
-            # (passing a Pt() length to line_spacing sets exact-point spacing
-            # in PowerPoint, equivalent to choosing "Exactly" + 50pt in the
-            # Paragraph dialog, instead of a "Single"/multiple line spacing).
             p.space_before = Pt(0)
-            p.space_after = Pt(0)
-            p.line_spacing = Pt(50)
+            p.space_after  = Pt(0)
+            p.line_spacing = line_spacing
             run = p.add_run()
             _set_run(run, line, FONT_NAME_MEDIUM, title_size, bold=False, color=TITLE_COLOR, caps=False)
 
 
-def build_presentation(dignitaries: list[Dignitary]) -> Presentation:
+# ---------------------------------------------------------------------------
+# Paper size presets — all measurements scale proportionally from A4
+# ---------------------------------------------------------------------------
+
+PAPER_SIZES = {
+    'A4 Landscape': {'w_in': 11.69, 'h_in': 8.27},
+    'A5 Landscape': {'w_in':  8.27, 'h_in': 5.83},
+}
+_A4_W = 11.69  # reference width; all scaling is relative to this
+
+
+def build_presentation(dignitaries: list[Dignitary], paper_size: str = 'A4 Landscape') -> Presentation:
+    size   = PAPER_SIZES.get(paper_size, PAPER_SIZES['A4 Landscape'])
+    sw     = size['w_in']
+    sh     = size['h_in']
+    scale  = sw / _A4_W          # linear scale factor vs A4
+
     prs = Presentation()
-    prs.slide_width = Inches(SLIDE_W_IN)
-    prs.slide_height = Inches(SLIDE_H_IN)
+    prs.slide_width  = Inches(sw)
+    prs.slide_height = Inches(sh)
     blank_layout = prs.slide_layouts[6]
+
+    half_h = sh / 2
 
     for dig in dignitaries:
         slide = prs.slides.add_slide(blank_layout)
 
         # Faint horizontal fold-guide line across the middle (matches sample)
-        line = slide.shapes.add_connector(1, Inches(0.3), Inches(HALF_H_IN), Inches(SLIDE_W_IN - 0.3), Inches(HALF_H_IN))
+        line = slide.shapes.add_connector(
+            1,
+            Inches(0.3 * scale), Inches(half_h),
+            Inches(sw - 0.3 * scale), Inches(half_h)
+        )
         line.line.color.rgb = RGBColor(0xE5, 0xE5, 0xE5)
         line.line.width = Pt(0.25)
 
         # Top half: rotated 180
-        _render_half(slide, dig, top_in=0.0, rotation=180)
+        _render_half(slide, dig, top_in=0.0,   rotation=180, slide_w=sw, half_h=half_h, scale=scale)
         # Bottom half: upright
-        _render_half(slide, dig, top_in=HALF_H_IN, rotation=0)
+        _render_half(slide, dig, top_in=half_h, rotation=0,   slide_w=sw, half_h=half_h, scale=scale)
 
     return prs
 

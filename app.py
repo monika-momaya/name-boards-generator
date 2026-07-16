@@ -6,7 +6,7 @@ import zipfile
 import pandas as pd
 import streamlit as st
 
-from board_generator import Dignitary, build_presentation, register_fonts, embed_font_in_pptx
+from board_generator import Dignitary, build_presentation, register_fonts, embed_font_in_pptx, PAPER_SIZES
 from excel_parser import parse_dignitaries
 
 st.set_page_config(page_title="Name Board Generator", page_icon="🪧", layout="centered")
@@ -35,6 +35,15 @@ with st.sidebar:
             f.write(font_upload.getbuffer())
 
     register_fonts(font_path, font_path)
+
+    st.divider()
+    st.header("Paper size")
+    paper_size = st.radio(
+        "Select output size",
+        options=list(PAPER_SIZES.keys()),
+        index=0,
+        help="A4 Landscape (297×210 mm) is the standard. A5 Landscape (210×148 mm) scales everything down proportionally.",
+    )
 
     st.divider()
     st.header("Excel template")
@@ -105,10 +114,12 @@ if uploaded is not None:
 
 
         with st.spinner("Building presentation..."):
-            prs = build_presentation(dignitaries)
+            prs = build_presentation(dignitaries, paper_size=paper_size)
             pptx_buf = io.BytesIO()
             prs.save(pptx_buf)
             pptx_bytes = pptx_buf.getvalue()
+
+        size_label = paper_size.replace(" ", "_").lower()  # e.g. "a4_landscape"
 
         # Embed the font directly into the PPTX so it renders correctly
         # on any machine, even without the font installed locally.
@@ -134,7 +145,7 @@ if uploaded is not None:
         st.download_button(
             "⬇️ Download PowerPoint (.pptx)",
             data=pptx_buf.getvalue(),
-            file_name="name_boards.pptx",
+            file_name=f"name_boards_{size_label}.pptx",
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         )
 
