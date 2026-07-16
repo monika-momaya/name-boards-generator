@@ -300,7 +300,17 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float,
 def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
                  slide_w: float = SLIDE_W_IN, half_h: float = HALF_H_IN,
                  scale: float = 1.0):
-    """Render one half (top or bottom) of the tent card."""
+    """Render one half (top or bottom) of the tent card.
+
+    NAME and TITLE/COMPANY are placed in a SINGLE textbox (one text_frame)
+    stacked as paragraphs, rather than two separate textboxes. This makes
+    the visual gap between the name and the title/company block exactly
+    match the value we set (NAME_TITLE_GAP_IN), regardless of how many
+    lines the title/company wraps to -- because PowerPoint itself lays out
+    and vertically centers all paragraphs together as one block, instead
+    of us trying to pre-calculate two separate box heights/positions from
+    estimated (and therefore sometimes inaccurate) line-height math.
+    """
     # Scale all measurements proportionally from A4 defaults
     textbox_w      = TEXTBOX_W_IN        * scale
     margin_x       = (slide_w - textbox_w) / 2
@@ -308,9 +318,8 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     name_min_pt    = NAME_MIN_PT         * scale
     title_max_pt   = TITLE_MAX_PT        * scale
     title_min_pt   = TITLE_MIN_PT        * scale
-    name_title_gap = NAME_TITLE_GAP_IN   * scale
-    tc_gap         = TITLE_COMPANY_GAP_IN * scale
-    line_spacing   = Pt(50 * scale)
+    name_title_gap_pt = NAME_TITLE_GAP_IN * scale * 72.0  # convert inches -> points
+    tc_gap_pt      = TITLE_COMPANY_GAP_IN * scale * 72.0
 
     max_width_in = textbox_w
 
@@ -322,59 +331,40 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
         title_max_pt=title_max_pt, title_min_pt=title_min_pt,
     )
 
-    def line_h_in(pt_size):
-        return (pt_size * 1.15) / 72.0
+    # The combined box spans the full half-slide height, and its content is
+    # vertically centered as a whole -- this guarantees the NAME+TITLE block
+    # (as one unit) is always perfectly centered in the half, whether the
+    # title/company is 1 line or wraps to 2-3 lines. The gap between the
+    # name and the first title/company line is fixed via space_before on
+    # that first title paragraph, so it never drifts.
+    box_h = half_h
+    box_y = top_in
 
-    name_h = line_h_in(name_size) * 1.05
-    title_block_h = 0.0
-    if title_lines:
-        if len(title_lines) == 1:
-            title_block_h = line_h_in(title_size)
-        elif len(title_lines) == 2:
-            title_block_h = line_h_in(title_size) + tc_gap + line_h_in(title_size)
-        else:
-            title_block_h = (3 * line_h_in(title_size)) + (2 * tc_gap)
+    box = _add_textbox(slide, margin_x, box_y, max_width_in, box_h, rotation=rotation)
+    tf = box.text_frame
+    tf.word_wrap = True
 
-    total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
-
-    # d = distance from the fold line to the nearest edge of the combined
-    # NAME + TITLE/COMPANY block. Centering the WHOLE block (not just the
-    # name) in the half means: for a single title/company line, the name
-    # sits close to the fold (as in the Modi example); for a 2-3 line
-    # title/company block, the entire block -- name included -- shifts up
-    # to stay perfectly centered, while the gap between name and title
-    # stays fixed at NAME_TITLE_GAP_IN. This auto-centers/auto-middle-aligns
-    # the whole block regardless of how many title/company lines there are.
-    d = (half_h - total_h) / 2
-
-    if rotation == 180:
-        # Top half: name bottom edge sits at distance d above the fold line.
-        name_y  = top_in + half_h - d - name_h
-        title_y = name_y - name_title_gap - title_block_h   # title above name
-    else:
-        # Bottom half: name top edge sits at distance d below the fold line.
-        name_y  = top_in + d
-        title_y = name_y + name_h + name_title_gap          # title below name
-
-    # --- Name textbox ---
-    name_box = _add_textbox(slide, margin_x, name_y, max_width_in, name_h, rotation=rotation)
-    p = name_box.text_frame.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    run = p.add_run()
+    # --- Name paragraph ---
+    p_name = tf.paragraphs[0]
+    p_name.alignment = PP_ALIGN.CENTER
+    p_name.space_before = Pt(0)
+    p_name.space_after = Pt(0)
+    p_name.line_spacing = 1.0
+    run = p_name.add_run()
     _set_run(run, name_text, FONT_NAME_BOLD, name_size, bold=True, color=NAME_COLOR, caps=True)
 
-    # --- Title/Company textbox(es) ---
-    if title_lines:
-        title_box = _add_textbox(slide, margin_x, title_y, max_width_in, title_block_h, rotation=rotation)
-        tf = title_box.text_frame
-        for i, line in enumerate(title_lines):
-            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-            p.alignment = PP_ALIGN.CENTER
-            p.space_before = Pt(0)
-            p.space_after  = Pt(0)
-            p.line_spacing = line_spacing
-            run = p.add_run()
-            _set_run(run, line, FONT_NAME_MEDIUM, title_size, bold=False, color=TITLE_COLOR, caps=False)
+    # --- Title/company paragraphs ---
+    for i, line in enumerate(title_lines):
+        p = tf.add_paragraph()
+        p.alignment = PP_ALIGN.CENTER
+        p.line_spacing = 1.0
+        if i == 0:
+            p.space_before = Pt(name_title_gap_pt)
+        else:
+            p.space_before = Pt(tc_gap_pt)
+        p.space_after = Pt(0)
+        run = p.add_run()
+        _set_run(run, line, FONT_NAME_MEDIUM, title_size, bold=False, color=TITLE_COLOR, caps=False)
 
 
 # ---------------------------------------------------------------------------
