@@ -74,7 +74,12 @@ TITLE_MIN_PT = 55
 # Vertical gap between Name block and Title block (loose)
 NAME_TITLE_GAP_IN = 0.18
 # Vertical gap between Title line and Company line (tight)
-TITLE_COMPANY_GAP_IN = 0.02
+TITLE_COMPANY_GAP_IN = 0.02   # kept for single-use fallback; see TITLE_LINE_SPACING_PT
+# Line spacing applied to each title/company line inside the textbox.
+# "Exactly N pt" in PowerPoint terms — controls the visual gap between
+# the Title line and the Company line.  Must be > TITLE_MAX_PT to avoid
+# overlap; 75 pt gives comfortable breathing room for a 55 pt font.
+TITLE_LINE_SPACING_PT = 75
 
 HALF_H_IN = SLIDE_H_IN / 2
 
@@ -310,7 +315,9 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     title_min_pt   = TITLE_MIN_PT        * scale
     name_title_gap = NAME_TITLE_GAP_IN   * scale
     tc_gap         = TITLE_COMPANY_GAP_IN * scale
-    line_spacing   = Pt(50 * scale)
+    line_spacing   = Pt(TITLE_LINE_SPACING_PT * scale)
+    # Actual per-line height in the textbox when using "Exactly N pt" spacing
+    line_sp_in     = (TITLE_LINE_SPACING_PT * scale) / 72
 
     max_width_in = textbox_w
 
@@ -331,13 +338,16 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
         if len(title_lines) == 1:
             title_block_h = line_h_in(title_size)
         else:
-            title_block_h = line_h_in(title_size) + tc_gap + line_h_in(title_size)
+            # With "Exactly N pt" line spacing, each line occupies line_sp_in
+            # of vertical space. Use that for the height calculation so the
+            # textbox matches what PowerPoint actually renders.
+            title_block_h = line_sp_in + line_h_in(title_size)
 
     total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
     # Use the two-line layout as the reference height for vertical centering
     # so single-line boards look the same as two-line ones.
-    two_line_ref_h = name_h + name_title_gap + (2 * line_h_in(title_max_pt) + tc_gap)
+    two_line_ref_h = name_h + name_title_gap + (line_sp_in + line_h_in(title_max_pt))
     centering_h = max(total_h, two_line_ref_h)
     # d = distance from the fold line to the nearest edge of the name box.
     # Using the same d in both halves makes the layout perfectly symmetric:
