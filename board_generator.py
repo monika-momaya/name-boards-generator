@@ -252,7 +252,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     name_min_pt    = NAME_MIN_PT         * scale
     title_max_pt   = TITLE_MAX_PT        * scale
     title_min_pt   = TITLE_MIN_PT        * scale
-    name_title_gap = 0.70 / 2.54 * scale
+    name_title_gap = 1.20 / 2.54 * scale
     tc_gap         = 0.35 / 2.54 * scale
 
     max_width_in = textbox_w
