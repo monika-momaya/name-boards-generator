@@ -72,10 +72,9 @@ TITLE_MAX_PT = 55
 TITLE_MIN_PT = 55
 
 # Vertical gap between Name block and Title block (loose)
-NAME_TITLE_GAP_IN = 0.18
+NAME_TITLE_GAP_IN = 0.07  # tightened: reduce gap between name and title/company
 # Vertical gap between Title line and Company line (tight)
 TITLE_COMPANY_GAP_IN = 0.02
-TITLE_LINE_SPACING_PT = 62
 
 HALF_H_IN = SLIDE_H_IN / 2
 
@@ -250,7 +249,7 @@ def _add_textbox(slide, left_in, top_in, width_in, height_in, rotation=0):
 
 
 def _build_title_company_lines(title: str, company: str, max_width_in: float,
-                               max_total_lines: int = 2,
+                               max_total_lines: int = 3,
                                title_max_pt: float = TITLE_MAX_PT,
                                title_min_pt: float = TITLE_MIN_PT):
     """Decide layout for title/company per spec:
@@ -273,13 +272,13 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float,
         size = fit_font_size(title, "medium", title_max_pt, title_min_pt, max_width_in)
         if _measure_width_in(title, "medium", size) <= max_width_in:
             return [title], size
-        wrapped = wrap_text_to_width(title, "medium", title_min_pt, max_width_in, max_lines=2)
+        wrapped = wrap_text_to_width(title, "medium", title_min_pt, max_width_in, max_lines=3)
         return (wrapped or [title]), title_min_pt
     if company and not title:
         size = fit_font_size(company, "medium", title_max_pt, title_min_pt, max_width_in)
         if _measure_width_in(company, "medium", size) <= max_width_in:
             return [company], size
-        wrapped = wrap_text_to_width(company, "medium", title_min_pt, max_width_in, max_lines=2)
+        wrapped = wrap_text_to_width(company, "medium", title_min_pt, max_width_in, max_lines=3)
         return (wrapped or [company]), title_min_pt
 
     # Both present: try stacked (own line each) at decreasing size
@@ -294,7 +293,7 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float,
     size = fit_font_size(merged, "medium", title_max_pt, title_min_pt, max_width_in)
     if _measure_width_in(merged, "medium", size) <= max_width_in:
         return [merged], size
-    wrapped = wrap_text_to_width(merged, "medium", title_min_pt, max_width_in, max_lines=2)
+    wrapped = wrap_text_to_width(merged, "medium", title_min_pt, max_width_in, max_lines=3)
     return (wrapped or [merged]), title_min_pt
 
 
@@ -311,9 +310,7 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     title_min_pt   = TITLE_MIN_PT        * scale
     name_title_gap = NAME_TITLE_GAP_IN   * scale
     tc_gap         = TITLE_COMPANY_GAP_IN * scale
-    line_spacing   = Pt(TITLE_LINE_SPACING_PT * scale)
-    # Actual per-line height in the textbox when using "Exactly N pt" spacing
-    line_sp_in     = (TITLE_LINE_SPACING_PT * scale) / 72
+    line_spacing   = Pt(50 * scale)
 
     max_width_in = textbox_w
 
@@ -333,20 +330,26 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     if title_lines:
         if len(title_lines) == 1:
             title_block_h = line_h_in(title_size)
-        else:
+        elif len(title_lines) == 2:
             title_block_h = line_h_in(title_size) + tc_gap + line_h_in(title_size)
+        else:
+            title_block_h = (3 * line_h_in(title_size)) + (2 * tc_gap)
 
     total_h = name_h + (name_title_gap if title_lines else 0) + title_block_h
 
-    # Use the two-line layout as the reference height for vertical centering
-    # so single-line boards look the same as two-line ones.
-    two_line_ref_h = name_h + name_title_gap + (2 * line_h_in(title_max_pt) + tc_gap)
-    centering_h = max(total_h, two_line_ref_h)
-    # d = distance from the fold line to the nearest edge of the name box.
-    # Using the same d in both halves makes the layout perfectly symmetric:
-    # the name sits at the same distance from the fold whether you're looking
-    # at the front or the back of the folded card.
-    d = (half_h - centering_h) / 2
+    # d = distance from the fold line to the nearest edge of the NAME box.
+    # This is now a FIXED value based on the name block alone (not on how
+    # many lines of title/company text follow), so the name always sits at
+    # exactly the same distance from the fold line -- whether a person has
+    # 1 line or 3 lines of title/company content underneath. Extra title
+    # lines simply extend further away from the fold instead of pushing
+    # the whole block (and the name) away from it.
+    d = (half_h - name_h) / 2 - (name_title_gap + title_block_h) / 2 if title_lines else (half_h - name_h) / 2
+    # Keep d from going negative/too small if content is very long; fall
+    # back to a small fixed minimum gap from the fold line in that case.
+    min_d = 0.15
+    if d < min_d:
+        d = min_d
 
     if rotation == 180:
         # Top half: name bottom edge sits at distance d above the fold line.
