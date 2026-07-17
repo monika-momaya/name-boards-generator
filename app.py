@@ -16,7 +16,7 @@ DEFAULT_FONT = os.path.join(APP_DIR, "fonts", "ALTGOT2N.TTF")
 
 st.title("🪧 Name Board Generator")
 st.caption(
-    "Upload an Excel sheet of dignitaries → get back an editable PowerPoint "
+    "Upload an Excel sheet of dignitaries or enter up to 5 manually → get back an editable PowerPoint "
     "(and optional PDF) with fold-over tent-card name boards, one slide per person."
 )
 
@@ -34,7 +34,8 @@ with st.sidebar:
         with open(font_path, "wb") as f:
             f.write(font_upload.getbuffer())
 
-    register_fonts(font_path, font_path)
+    if font_path:
+        register_fonts(font_path, font_path)
 
     st.divider()
     st.header("Paper size")
@@ -64,114 +65,163 @@ with st.sidebar:
     )
 
 # ---------------------------------------------------------------------------
-# Main: upload + preview + generate
+# Main mode selector
 # ---------------------------------------------------------------------------
 
-st.subheader("1. Upload your Excel file")
-st.write(
-    "Just needs a column with each person's **name**. Any other columns "
-    "(title, designation, organization, etc.) are automatically picked up "
-    "and shown on the board — section divider rows, blank rows, and "
-    "serial-number/email/phone columns are detected and ignored."
+st.subheader("1. Choose input mode")
+mode = st.radio(
+    "How do you want to enter the names?",
+    options=["Excel upload", "Manual entry (up to 5)"],
+    horizontal=True,
 )
 
-uploaded = st.file_uploader("Excel file (.xlsx)", type=["xlsx"])
+rows = []
+manual_rows = []
 
-if uploaded is not None:
-    try:
-        result = parse_dignitaries(uploaded)
-    except Exception as e:
-        st.error(f"Could not read the Excel file: {e}")
-        st.stop()
+if mode == "Excel upload":
+    st.subheader("2. Upload your Excel file")
+    st.write(
+        "Just needs a column with each person's **name**. Any other columns "
+        "(title, designation, organization, etc.) are automatically picked up "
+        "and shown on the board — section divider rows, blank rows, and "
+        "serial-number/email/phone columns are detected and ignored."
+    )
 
-    rows = result.rows
+    uploaded = st.file_uploader("Excel file (.xlsx)", type=["xlsx"])
+
+    if uploaded is not None:
+        try:
+            result = parse_dignitaries(uploaded)
+        except Exception as e:
+            st.error(f"Could not read the Excel file: {e}")
+            st.stop()
+
+        rows = result.rows
+        if not rows:
+            st.warning("No usable rows (with a Name) were found in the uploaded file.")
+            st.stop()
+
+        st.success(f"Loaded {len(rows)} dignitary record(s).")
+        st.caption(result.note)
+        preview_df = pd.DataFrame(rows, columns=["name", "title", "company"])
+        preview_df.columns = ["Name", "Title", "Company"]
+        st.dataframe(preview_df, use_container_width=True)
+
+else:
+    st.subheader("2. Enter details manually")
+    st.write(
+        "Fill only the rows you need. Name is the only required field. "
+        "Title and Company are optional — if someone pastes everything into Title, the app will still generate the board."
+    )
+
+    for i in range(5):
+        with st.expander(f"Board {i+1}", expanded=(i == 0)):
+            c1, c2, c3 = st.columns([2.2, 2.2, 2.2])
+            with c1:
+                name = st.text_input("Name", key=f"name_{i}")
+            with c2:
+                title = st.text_input("Title", key=f"title_{i}")
+            with c3:
+                company = st.text_input("Company", key=f"company_{i}")
+
+            if name.strip():
+                manual_rows.append({
+                    "name": name.strip(),
+                    "title": title.strip(),
+                    "company": company.strip(),
+                })
+
+    rows = manual_rows
+    if rows:
+        st.success(f"Prepared {len(rows)} manual board(s).")
+        preview_df = pd.DataFrame(rows, columns=["name", "title", "company"])
+        preview_df.columns = ["Name", "Title", "Company"]
+        st.dataframe(preview_df, use_container_width=True)
+    else:
+        st.info("Enter at least one name to generate boards.")
+
+# ---------------------------------------------------------------------------
+# Generate
+# ---------------------------------------------------------------------------
+
+st.subheader("3. Generate")
+col1, col2 = st.columns(2)
+with col1:
+    also_pdf = st.checkbox("Also generate PDF", value=False)
+with col2:
+    st.write("")
+
+if st.button("🪧 Generate Name Boards", type="primary"):
     if not rows:
-        st.warning("No usable rows (with a Name) were found in the uploaded file.")
+        st.warning("Please add at least one person before generating.")
         st.stop()
 
-    st.success(f"Loaded {len(rows)} dignitary record(s).")
-    st.caption(result.note)
-    preview_df = pd.DataFrame(rows, columns=["name", "title", "company"])
-    preview_df.columns = ["Name", "Title", "Company"]
-    st.dataframe(preview_df, use_container_width=True)
+    dignitaries = [
+        Dignitary(
+            name=row["name"],
+            title=row.get("title", ""),
+            company=row.get("company", ""),
+        )
+        for row in rows
+    ]
 
-    st.subheader("2. Generate")
-    col1, col2 = st.columns(2)
-    with col1:
-        also_pdf = st.checkbox("Also generate PDF", value=False)
-    with col2:
-        st.write("")
+    with st.spinner("Building presentation..."):
+        prs = build_presentation(dignitaries, paper_size=paper_size)
+        pptx_buf = io.BytesIO()
+        prs.save(pptx_buf)
+        pptx_bytes = pptx_buf.getvalue()
 
-    if st.button("🪧 Generate Name Boards", type="primary"):
-        dignitaries = [
-            Dignitary(
-                name=row["name"],
-                title=row["title"],
-                company=row["company"],
-            )
-            for row in rows
-        ]
+    size_label = paper_size.replace(" ", "_").lower()
 
-
-        with st.spinner("Building presentation..."):
-            prs = build_presentation(dignitaries, paper_size=paper_size)
-            pptx_buf = io.BytesIO()
-            prs.save(pptx_buf)
-            pptx_bytes = pptx_buf.getvalue()
-
-        size_label = paper_size.replace(" ", "_").lower()  # e.g. "a4_landscape"
-
-        # Embed the font directly into the PPTX so it renders correctly
-        # on any machine, even without the font installed locally.
-        if font_path:
-            with st.spinner("Embedding font..."):
-                try:
-                    pptx_bytes = embed_font_in_pptx(
-                        pptx_bytes, font_path, "AlternateGothic2 BT"
-                    )
-                except Exception as e:
-                    st.warning(f"Font could not be embedded ({e}). The PPTX will still reference the font by name.")
-        else:
-            st.info(
-                "💡 Upload your AlternateGothic2 BT font file in the sidebar to embed it "
-                "into the PPTX — this ensures the correct font renders on every machine, "
-                "including those without the font installed."
-            )
-
-        pptx_buf = io.BytesIO(pptx_bytes)
-        pptx_buf.seek(0)
-
-        st.success("Name boards generated!")
-        st.download_button(
-            "⬇️ Download PowerPoint (.pptx)",
-            data=pptx_buf.getvalue(),
-            file_name=f"name_boards_{size_label}.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    if font_path:
+        with st.spinner("Embedding font..."):
+            try:
+                pptx_bytes = embed_font_in_pptx(
+                    pptx_bytes, font_path, "AlternateGothic2 BT"
+                )
+            except Exception as e:
+                st.warning(f"Font could not be embedded ({e}). The PPTX will still reference the font by name.")
+    else:
+        st.info(
+            "💡 Upload your AlternateGothic2 BT font file in the sidebar to embed it into the PPTX — "
+            "this ensures the correct font renders on every machine, including those without the font installed."
         )
 
-        if also_pdf:
-            with st.spinner("Converting to PDF (this may take a moment)..."):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    pptx_path = os.path.join(tmpdir, "name_boards.pptx")
-                    with open(pptx_path, "wb") as f:
-                        f.write(pptx_buf.getvalue())
-                    ret = os.system(
-                        f'soffice --headless --convert-to pdf --outdir "{tmpdir}" "{pptx_path}" >/dev/null 2>&1'
+    pptx_buf = io.BytesIO(pptx_bytes)
+    pptx_buf.seek(0)
+
+    st.success("Name boards generated!")
+    st.download_button(
+        "⬇️ Download PowerPoint (.pptx)",
+        data=pptx_buf.getvalue(),
+        file_name=f"name_boards_{size_label}.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    )
+
+    if also_pdf:
+        with st.spinner("Converting to PDF (this may take a moment)..."):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pptx_path = os.path.join(tmpdir, "name_boards.pptx")
+                with open(pptx_path, "wb") as f:
+                    f.write(pptx_buf.getvalue())
+                os.system(
+                    f'soffice --headless --convert-to pdf --outdir "{tmpdir}" "{pptx_path}" >/dev/null 2>&1'
+                )
+
+                pdf_path = os.path.join(tmpdir, "name_boards.pdf")
+                if os.path.isfile(pdf_path):
+                    with open(pdf_path, "rb") as f:
+                        pdf_bytes = f.read()
+                    st.download_button(
+                        "⬇️ Download PDF",
+                        data=pdf_bytes,
+                        file_name="name_boards.pdf",
+                        mime="application/pdf",
                     )
-                    pdf_path = os.path.join(tmpdir, "name_boards.pdf")
-                    if os.path.isfile(pdf_path):
-                        with open(pdf_path, "rb") as f:
-                            pdf_bytes = f.read()
-                        st.download_button(
-                            "⬇️ Download PDF",
-                            data=pdf_bytes,
-                            file_name="name_boards.pdf",
-                            mime="application/pdf",
-                        )
-                    else:
-                        st.warning(
-                            "PDF conversion isn't available in this environment. "
-                            "You can open the PPTX in PowerPoint and export to PDF from there."
-                        )
+                else:
+                    st.warning(
+                        "PDF conversion isn't available in this environment. "
+                        "You can open the PPTX in PowerPoint and export to PDF from there."
+                    )
 else:
-    st.info("⬆️ Upload an Excel file to get started, or download the template from the sidebar first.")
+    st.info("Choose an input mode and add at least one name to get started.")
