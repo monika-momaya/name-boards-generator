@@ -73,6 +73,10 @@ TITLE_MIN_PT = 55
 
 # Vertical gap between Name block and Title block (loose)
 NAME_TITLE_GAP_IN = 0.18
+# Extra distance pushed from the fold line toward the outer edge.
+# Increases the visual gap from fold to name text: 0.248 in ≈ 0.63 cm
+# takes the gap from the current 1.12 cm to 1.75 cm.
+FOLD_NAME_EXTRA_IN = 0.248
 # Vertical gap between Title line and Company line (tight)
 TITLE_COMPANY_GAP_IN = 0.02
 TITLE_LINE_SPACING_PT = 55
@@ -346,7 +350,9 @@ def _render_half(slide, dignitary: Dignitary, top_in: float, rotation: int,
     # Using the same d in both halves makes the layout perfectly symmetric:
     # the name sits at the same distance from the fold whether you're looking
     # at the front or the back of the folded card.
-    d = (half_h - centering_h) / 2
+    # FOLD_NAME_EXTRA_IN pushes the name further from the fold to achieve
+    # the desired 1.75 cm visual gap (fold line to name text).
+    d = (half_h - centering_h) / 2 + FOLD_NAME_EXTRA_IN * scale
 
     if rotation == 180:
         # Top half: name bottom edge sits at distance d above the fold line.
