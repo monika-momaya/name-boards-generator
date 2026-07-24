@@ -263,8 +263,8 @@ def _build_title_company_lines(title: str, company: str, max_width_in: float,
     tight_after_index marks which line indices should use the TIGHT gap
     to the next line (vs the normal gap before this block).
     """
-    # Title/Company are rendered exactly as the user typed them — no
-    # auto title-casing. Only NAME is forced to caps (done elsewhere).
+    # Title/Company are rendered exactly as the user/spreadsheet provided
+    # them -- no auto title-casing is applied. Only NAME is forced to caps.
     title = (title or "").strip()
     company = (company or "").strip()
 
